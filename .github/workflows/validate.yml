@@ -1,0 +1,31 @@
+name: validate
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+permissions:
+  contents: read
+
+# Security note: this workflow does NOT use any untrusted github.event.*
+# inputs in run: commands. All steps invoke fixed scripts with no
+# user-controlled interpolation.
+
+jobs:
+  tickets:
+    name: tickets + index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: validate ticket frontmatter + cross-refs
+        run: python scripts/build_index.py --validate
+
+      - name: INDEX.md + INDEX.json up-to-date
+        run: python scripts/build_index.py --check

@@ -1,0 +1,42 @@
+---
+description: Resume an active ticket — read next_action, show branch state, prime context for the session
+argument-hint: <TICKET-ID>
+---
+
+# /ticket-resume $ARGUMENTS
+
+Re-hydrate context for ticket `$ARGUMENTS`. Inverse of `/ticket-pause`.
+
+## Procedure
+
+1. **Locate.** Find `meta/tickets/active/$ARGUMENTS-*.md`. If not found → check `backlog/` and suggest `/ticket-start` instead.
+2. **Read the ticket.**
+   - Extract: `title`, `next_action:`, `repos:`, `branch:`.
+   - Skim the body: last modified Plan section, last Decisions entry, any open Risks.
+3. **Check branch state per repo.** For each repo in `repos:`:
+   - Current branch (should match `branch:` field). If mismatch → report "repo X is on `<other>`, expected `<branch>`".
+   - `git status --porcelain` — any uncommitted changes?
+   - `git log --oneline <base>..HEAD -n 5` — last few commits on this branch.
+   - Is the branch up to date with `origin/<base>`?
+4. **Report a concise re-hydration block:**
+   ```
+   Ticket: <ID> — <title>
+   Next action: <next_action>
+
+   Branches:
+     repo-1: feat/<ID>-<slug>  [3 commits ahead, clean]
+     repo-2: feat/<ID>-<slug>  [not yet checked out — run `git checkout`]
+
+   Last commits (repo-1):
+     abc123 feat: phase 2 API client
+     def456 test: coverage for phase 2
+
+   Recent Decisions: <date> — <title>
+   Open risks: none / <list>
+   ```
+5. **Do NOT modify anything.** Resume is read-only. If the user wants to check out a missing branch, tell them the command — don't auto-run.
+
+## Guard rails
+
+- No git fetch, no pull, no checkout — resume is strictly read-only.
+- If `next_action:` is null or empty on an active ticket, flag it as a bug (validator should have caught it) and stop.

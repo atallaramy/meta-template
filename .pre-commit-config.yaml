@@ -1,0 +1,29 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+  - repo: local
+    hooks:
+      - id: validate-tickets
+        name: validate tickets (frontmatter + cross-refs + epic registry)
+        entry: python scripts/build_index.py --validate
+        language: system
+        pass_filenames: false
+        files: ^(tickets/|hotfix/|epics/|GOVERNANCE\.md)
+
+      - id: index-up-to-date
+        name: INDEX.md + INDEX.json up-to-date
+        entry: python scripts/build_index.py --check
+        language: system
+        pass_filenames: false
+        files: ^(tickets/|hotfix/|epics/|GOVERNANCE\.md|INDEX\.md|INDEX\.json)
