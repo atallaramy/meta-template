@@ -16,7 +16,7 @@ Keep in sync: when you edit `.claude/CLAUDE.md`, also update this file
 - Feature branches branch from `<base>`, PR back into `<base>` — never push directly to `<base>`.
 - Git commit format: `type(scope): description` + blank line + body explaining **why**.
 - **PR merge style:** *(squash, merge, or rebase — pick one and document it here)*.
-- **Pre-commit review gate.** Before EVERY commit, run a code review on the staged diff (linter + reviewer). Fix all surfaced issues before committing — no "I'll fix in next commit" deferrals.
+- **The Core Loop is rule #0.** See `meta/guidelines/best-practices/core-loop.md`. Every unit of work iterates: write → code-review agent → security-review agent + manual `meta/guidelines/security-guidelines.md` pass → `best-practices`/`researcher` community check → fix everything surfaced (no deferrals) → loop until a pass surfaces zero new findings. THEN commit. Runs on top of language linters. **No compromises. No skipping. No "small change exemption."**
 
 ## Session Start
 
@@ -75,7 +75,7 @@ All plans, tickets, architecture docs, audits, compliance checklists live in `me
 
 ## Guidelines
 
-- `meta/guidelines/best-practices.md` — code quality, consistency, research-first
+- `meta/guidelines/best-practices/` — **project-specific** best practices (topic-partitioned: `core-loop.md` as rule #0, `overview.md` as cross-stack baseline, plus topic files added per project). **Read first** before writing new code — the `best-practices` agent is wired to consult this folder before codebase/internet.
 - `meta/guidelines/security-guidelines.md` — auth, crypto, cookies, audit logging
 - `meta/guidelines/implementation-checklists.md` — pre-flight for complex features
 - `meta/guidelines/design-system.md` — frontend design system + component standards

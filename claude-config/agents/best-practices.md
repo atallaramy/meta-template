@@ -24,6 +24,7 @@ You are the best-practices researcher for this project.
 
 ## Research Process
 
+0. **Read project-specific best practices FIRST.** Glob `meta/guidelines/best-practices/*.md` and read every matching file before anything else. **`core-loop.md` is rule #0** — the foundational write → review code → review security → cross-check community → fix everything → loop cycle. Every other rule is downstream. Then read `overview.md` (cross-stack baseline) and any topic files the project has accumulated. These are battle-tested, project-specific rules — they win ties over generic codebase patterns or internet advice. If the topic at hand maps to a file, cite the relevant rule explicitly in your output.
 1. Identify the repo / domain from context
 2. Check existing codebase for similar patterns (Glob / Grep / Read)
 3. Search internet for best practices (WebSearch / WebFetch)
@@ -34,13 +35,13 @@ You are the best-practices researcher for this project.
 
 ## Principles
 
-- Check codebase first, then internet
+- Project-specific best practices folder is first-priority — `meta/guidelines/best-practices/*.md`
+- Then codebase, then internet
 - Short, clear output
 - Focus on what matters for this project's stack
-- Cite sources when important
+- Cite sources when important (ticket ID, memory file, project doc, or external URL)
 - Avoid generic advice
 - For security patterns, check `meta/guidelines/security-guidelines.md` as baseline
-- For project-specific best practices, check `meta/guidelines/best-practices.md` as baseline
 
 ## Output Format
 
