@@ -33,6 +33,16 @@ For epic-registry additions, use the section below.
 
 ## File moves
 
+### 2026-05-11 — Auto-unblock dependent tickets when blocker ships (`scripts/build_index.py` `--fix` mode)
+
+- **Scope of the port:** new `--fix` mode in `scripts/build_index.py` — detects stale `blocked_by:` entries (refs to tickets in `tickets/done/`), surgically rewrites the dependent's `blocked_by:` and `updated:` frontmatter lines via anchored regex (no YAML round-trip, no external deps), backs up + writes + re-parses to confirm `id/epic/status` round-trip identically, restores from backup on any drift, auto-stages touched files via `git add` with post-stage `git diff --cached` cross-check. `--validate` extended to report stale entries as errors. `--fix` is mutually exclusive with `--validate` AND `--check`. Plain mode warns about stale entries without failing. `_detect_multiline_list_fields()` enforces bracket-list form repo-wide (silent-parse footgun fix).
+- **Companion changes (same migration):**
+  - `.pre-commit-config.yaml` — replaced `--validate` + `--check` hook pair with a single `--fix` hook that does both internally + auto-stages.
+  - CI workflow stays unchanged — still calls `--validate` + `--check` (defense in depth against `--no-verify` / external edits / force-pushes).
+- **Why universal:** the auto-unblock pattern is pure ticket-system hygiene — works for any project using the meta template's ticket structure. Zero brand references.
+
+---
+
 ### 2026-05-11 — Split flat best-practices.md into topic folder + wire agent Step 0
 
 - **From:** `guidelines/best-practices.md`

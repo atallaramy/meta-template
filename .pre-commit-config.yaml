@@ -14,16 +14,15 @@ repos:
 
   - repo: local
     hooks:
-      - id: validate-tickets
-        name: validate tickets (frontmatter + cross-refs + epic registry)
-        entry: python scripts/build_index.py --validate
+      # --fix mode validates frontmatter, auto-clears stale blocked_by entries
+      # (references to tickets in tickets/done/), regenerates INDEX, auto-ticks
+      # PROD-READINESS if present, and `git add`s any touched files so the
+      # human sees them in the commit. Replaces the older --validate+--check
+      # hook pair locally; CI workflows keep the granular layout for defense
+      # in depth against --no-verify / external edits / force-pushes.
+      - id: tickets-fix-and-index
+        name: tickets — auto-clear stale blocked_by + regen INDEX
+        entry: python scripts/build_index.py --fix
         language: system
         pass_filenames: false
-        files: ^(tickets/|hotfix/|epics/|GOVERNANCE\.md)
-
-      - id: index-up-to-date
-        name: INDEX.md + INDEX.json up-to-date
-        entry: python scripts/build_index.py --check
-        language: system
-        pass_filenames: false
-        files: ^(tickets/|hotfix/|epics/|GOVERNANCE\.md|INDEX\.md|INDEX\.json)
+        files: ^(tickets/|hotfix/|epics/|GOVERNANCE\.md|PROD-READINESS\.md|INDEX\.md|INDEX\.json)
