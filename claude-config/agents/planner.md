@@ -72,7 +72,7 @@ Key frontmatter fields (immutable once committed):
 
 - `id`: `<EPIC>-<N>` format from the epic registry (GOVERNANCE section 3)
 - `epic`: must match an epic code
-- `status`: must match the folder (`backlog`/`active`/`blocked`/`done`)
+- `status`: must match the folder (`backlog`/`active`/`blocked`/`parked`/`done`)
 
 ## Principles
 

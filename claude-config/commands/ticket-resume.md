@@ -9,7 +9,11 @@ Re-hydrate context for ticket `$ARGUMENTS`. Inverse of `/ticket-pause`.
 
 ## Procedure
 
-1. **Locate.** Find `meta/tickets/active/$ARGUMENTS-*.md`. If not found → check `backlog/` and suggest `/ticket-start` instead.
+1. **Locate.** Find `meta/tickets/active/$ARGUMENTS-*.md`. If not found:
+   - Check `backlog/` → ticket is ready but not started; suggest `/ticket-start $ARGUMENTS`.
+   - Check `parked/` → ticket is gated by an external trigger. Read its `parked_until:` and report: "ticket `$ARGUMENTS` is parked until `<trigger>`; activate by moving to `backlog/` and clearing `parked_until:` first, then re-run." Do NOT auto-unpark.
+   - Check `blocked/` → ticket is waiting on an internal dependency; report the `blocked_by:` list.
+   - Check `done/` → ticket has shipped; suggest reading its retrospective.
 2. **Read the ticket.**
    - Extract: `title`, `next_action:`, `repos:`, `branch:`.
    - Skim the body: last modified Plan section, last Decisions entry, any open Risks.

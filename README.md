@@ -54,7 +54,7 @@ meta/
 
 - **New ticket:** copy `templates/TICKET.md` into `tickets/backlog/<EPIC>-<N>-<slug>.md`, fill frontmatter, set `epic:` from the registry.
 - **New hotfix:** copy `templates/HOTFIX.md` into `hotfix/HF-YYYY-MM-DD-<slug>.md`.
-- **Status change:** `git mv` the ticket file between `tickets/{active,backlog,blocked,done}/` and update the `status:` frontmatter field (linter enforces they match).
+- **Status change:** `git mv` the ticket file between `tickets/{active,backlog,blocked,parked,done}/` and update the `status:` frontmatter field (linter enforces they match). `parked/` is gated by an external trigger (see `GOVERNANCE.md` §4 + `parked_until:` in §5).
 - **Regenerate INDEX.md:** `python scripts/build_index.py` (CI fails if it's stale).
 - **Archive a file:** `git mv` to `_archive/` + add entry to `MIGRATION-LOG.md`.
 - **Never `rm`:** see GOVERNANCE section 6.

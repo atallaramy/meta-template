@@ -97,13 +97,21 @@ Follow this procedure. Do not reason from scratch each time.
 
 ```
 tickets/
-├── backlog/     # identified, not yet started
+├── backlog/     # identified, ready to pick up
 ├── active/      # in progress on a branch
-├── blocked/     # cannot proceed (frontmatter must state blocked_by)
+├── blocked/     # cannot proceed (frontmatter must state blocked_by — internal dependency)
+├── parked/      # gated by an external trigger (audit date, launch date, calendar event); not yet startable
 └── done/        # shipped and verified
 ```
 
 Transitions are `git mv` operations. The frontmatter `status:` field must match the folder name at all times — the linter enforces this.
+
+### `blocked` vs `parked` — semantic distinction
+
+- **`blocked`** — waiting on **another ticket** (internal dependency). The blocker is a ticket ID; frontmatter `blocked_by:` lists it. Stale entries are auto-cleared by `scripts/build_index.py --fix` when the blocker moves to `done/`.
+- **`parked`** — waiting on an **external trigger** (audit window, launch date, calendar event, business decision). The trigger is a named event; frontmatter `parked_until:` names it. Activation requires a human + `git mv` back to `backlog/`.
+
+If you find yourself wanting to write `blocked_by: [external-event]`, the ticket belongs in `parked/` instead.
 
 ---
 
@@ -116,7 +124,7 @@ Required on every ticket file:
 id: AUTH-1                           # immutable once assigned
 title: Login flow
 epic: AUTH                           # must match epic registry
-status: active                       # backlog | active | blocked | done
+status: active                       # backlog | active | blocked | parked | done
 created: 2026-01-15                  # ISO date, set once
 updated: 2026-01-15                  # bumped on significant edits
 parent: null                         # or another ticket ID
@@ -127,6 +135,7 @@ discovered_from: null                # ticket ID that caused this ticket to be c
 branch: feat/AUTH-1-login-flow       # or null
 repos: []                            # sub-repos this ticket touches; free-form (configure VALID_REPOS in scripts/build_index.py if you want enforcement)
 next_action: Run smoke tests.        # one sentence; required when status == active
+parked_until: null                   # required when status == parked; names the external trigger
 ---
 ```
 
@@ -135,6 +144,17 @@ next_action: Run smoke tests.        # one sentence; required when status == act
 - **Purpose:** carry context across AI sessions. Written at `/ticket-pause`, read at `/ticket-resume`.
 - **Required** when `status: active` (validator enforces). Free-form on other statuses.
 - **Format:** one sentence, imperative mood, concrete. ✅ `Run phase-0 preflight checks`. ❌ `Continue work`.
+
+### `parked_until:` — the activation-trigger field
+
+- **Purpose:** name the external event that, when it fires, moves this ticket back to `backlog/`. Without this field, parked tickets become invisible technical debt — nobody remembers why they're parked or when to unpark.
+- **Required** when `status: parked` (validator enforces). Free-form on other statuses (typically `null`).
+- **Format:** short string. Suggested shapes:
+  - A named project event (e.g. `prod-cutover`, `compliance-audit`, `beta-launch`, `v2-release`)
+  - An explicit calendar date when known: `<YYYY-MM-DD>` (e.g. `2026-09-01`)
+  - A descriptor pointing at another condition (e.g. `after-AUTH-7-ships`, `first-enterprise-customer`)
+- **Single trigger per ticket:** if multiple triggers could activate the ticket, pick the **earliest realistic** one. Document the canonical trigger names somewhere stable in your project (a `READINESS.md` doc, or this file) so naming stays consistent — tickets reference these names; one source of truth keeps drift out.
+- **Why parked, not blocked:** `blocked` is for internal dependencies (another ticket); `parked` is for external events. See §4 "blocked vs parked" semantic distinction.
 
 ### `repos:` — which sub-repos the ticket touches
 
@@ -240,6 +260,7 @@ Fails the commit on any of:
 - Filename doesn't match the `<ID>-<slug>.md` convention (section 2)
 - Filename `<ID>` portion doesn't match the `id:` field in frontmatter
 - `next_action:` missing or empty on a ticket in `active/` (section 5)
+- `parked_until:` missing or empty on a ticket in `parked/` (section 5)
 - INDEX.md not regenerated
 
 Wired via pre-commit hook (local) + GitHub Action (CI).

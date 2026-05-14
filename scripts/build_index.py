@@ -42,7 +42,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 GOVERNANCE = REPO_ROOT / "GOVERNANCE.md"
 PROD_READINESS = REPO_ROOT / "PROD-READINESS.md"
 
-VALID_STATUSES = {"backlog", "active", "blocked", "done"}
+VALID_STATUSES = {"backlog", "active", "blocked", "parked", "done"}
 
 ID_RE = re.compile(r"^(?P<prefix>[A-Z]{2,8})-(?P<num>\d+(?:\.\d+)?)$")
 HOTFIX_ID_RE = re.compile(r"^HF-\d{4}-\d{2}-\d{2}-[a-z0-9-]+$")
@@ -191,7 +191,7 @@ def discover_tickets(root: Path) -> list[Ticket]:
     tickets: list[Ticket] = []
     # Files that may legitimately live in ticket folders without being tickets.
     NON_TICKET_FILES = {"README.md"}
-    for sub in ("tickets/backlog", "tickets/active", "tickets/blocked", "tickets/done", "hotfix"):
+    for sub in ("tickets/backlog", "tickets/active", "tickets/blocked", "tickets/parked", "tickets/done", "hotfix"):
         folder = root / sub
         if not folder.is_dir():
             continue
@@ -259,7 +259,8 @@ def validate(tickets: list[Ticket], epic_codes: set[str], synonyms: dict[str, st
             t.errors.append(f"status {status!r} not one of {sorted(VALID_STATUSES)}")
         # status ↔ folder (hotfixes live in hotfix/ regardless of internal status — see HOTFIX.md template)
         expected_folder = {"backlog": "tickets/backlog", "active": "tickets/active",
-                           "blocked": "tickets/blocked", "done": "tickets/done"}
+                           "blocked": "tickets/blocked", "parked": "tickets/parked",
+                           "done": "tickets/done"}
         if status in expected_folder and not is_hotfix:
             if expected_folder[status] not in str(t.path):
                 t.errors.append(f"status {status!r} does not match folder {t.path.parent.name!r}")
@@ -269,6 +270,13 @@ def validate(tickets: list[Ticket], epic_codes: set[str], synonyms: dict[str, st
             next_action = fm.get("next_action")
             if not next_action or str(next_action).strip().lower() in {"", "null", "none"}:
                 t.errors.append("next_action required when status == active (GOVERNANCE §5 + §15.1)")
+        # parked_until required on parked tickets — names the activation trigger so
+        # parked tickets don't become invisible technical debt. Symmetric to the
+        # next_action invariant for active tickets.
+        if status == "parked" and not is_hotfix:
+            parked_until = fm.get("parked_until")
+            if not parked_until or str(parked_until).strip().lower() in {"", "null", "none"}:
+                t.errors.append("parked_until required when status == parked (GOVERNANCE §5)")
         # repos values must be a subset of VALID_REPOS
         repos = fm.get("repos") or []
         if isinstance(repos, list):
@@ -291,7 +299,11 @@ def validate(tickets: list[Ticket], epic_codes: set[str], synonyms: dict[str, st
 
 
 def render_index_md(tickets: list[Ticket]) -> str:
-    by_status: dict[str, list[Ticket]] = {s: [] for s in ("active", "blocked", "backlog", "done")}
+    # Render order: active → blocked → backlog → parked → done. Parked sits
+    # after backlog because they're conceptually "later than backlog": pick
+    # from backlog first; unpark only when the named trigger fires.
+    status_order = ("active", "blocked", "backlog", "parked", "done")
+    by_status: dict[str, list[Ticket]] = {s: [] for s in status_order}
     hotfixes: list[Ticket] = []
     for t in tickets:
         if t.id.startswith("HF-"):
@@ -308,14 +320,31 @@ def render_index_md(tickets: list[Ticket]) -> str:
         "active": "Active",
         "blocked": "Blocked",
         "backlog": "Backlog",
+        "parked": "Parked",
         "done": "Done",
     }
-    for status in ("active", "blocked", "backlog", "done"):
+    for status in status_order:
         items = sorted(by_status[status], key=lambda t: t.id)
         lines.append(f"## {status_titles[status]} ({len(items)})")
         lines.append("")
         if not items:
             lines.append("_No tickets._")
+            lines.append("")
+            continue
+        # Parked tickets surface their activation trigger instead of `blocked_by`
+        # (parked tickets cannot have internal blockers — that would be `blocked`).
+        if status == "parked":
+            lines.append("| ID | Title | Epic | Parent | Parked until | Path |")
+            lines.append("|---|---|---|---|---|---|")
+            for t in items:
+                fm = t.frontmatter
+                parent = fm.get("parent") or "—"
+                parked_until = fm.get("parked_until") or "—"
+                rel = t.path.relative_to(REPO_ROOT)
+                lines.append(
+                    f"| `{t.id}` | {fm.get('title', '')} | `{fm.get('epic', '')}` | "
+                    f"{parent} | `{parked_until}` | [`{rel}`]({rel}) |"
+                )
             lines.append("")
             continue
         lines.append("| ID | Title | Epic | Parent | Blocked by | Path |")

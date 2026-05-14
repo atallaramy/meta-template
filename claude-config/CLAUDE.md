@@ -69,7 +69,7 @@ Specialized agents live in `.claude/agents/` (backed up at `meta/claude-config/a
 All plans, tickets, architecture docs, audits, compliance checklists live in `meta/`. Rules in `meta/GOVERNANCE.md`:
 
 - IDs immutable once assigned (e.g. `AUTH-1`, `EMAIL-2`)
-- Folder = status (`tickets/{active,backlog,blocked,done}/`)
+- Folder = status (`tickets/{active,backlog,blocked,parked,done}/`). `parked/` = externally-gated; each ticket carries `parked_until:` naming the trigger. See GOVERNANCE.md §4–§5.
 - **Never `rm` files** — move to `meta/_archive/` with a MIGRATION-LOG entry
 - New ticket: copy `meta/templates/TICKET.md`, fill frontmatter, land in `meta/tickets/backlog/`
 
