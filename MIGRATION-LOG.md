@@ -53,3 +53,17 @@ For epic-registry additions, use the section below.
   - `claude-config/CLAUDE.md` — "Pre-commit review gate" line replaced with "The Core Loop is rule #0" pointing at the new file; Guidelines section repointed at the folder.
 - **Scope of the port:** universal pieces only — `core-loop.md`, `README.md` (with format spec + suggested topic-file names), `overview.md` move, agent Step 0 wire, CLAUDE.md rule. Any topic files (e.g. `cutover-patterns.md`, `dns-and-email.md`, `<framework>-patterns.md`) are project-specific and added by each downstream project as they accumulate ≥3 traceable rules per topic.
 
+---
+
+### 2026-05-15 — Sub-task IDs flattened (Jira-style); `<N>.<M>` decimal form deprecated for new tickets
+
+- **What changed:** sub-tasks now use flat next-available IDs (e.g. `EPIC-8` as a child of `EPIC-7`), with the parent/child relationship encoded only in the `parent:` / `children:` frontmatter fields. The `<EPIC>-<N>.<M>` decimal form is **deprecated for new tickets**.
+- **Why universal:** decimal IDs (`EPIC-7.1`) read like version labels, not child references; flat IDs match the conventions used by Jira, Linear, GitHub Issues, and other common issue trackers. The parent/child relationship is already expressed by the `parent:` / `children:` fields — encoding it in the ID is redundant and harder to scan. Convention applies to every project using this template.
+- **Backwards compatibility:** existing `.M` IDs in any downstream project are NOT renamed (IDs are immutable per GOVERNANCE §2). The validator regex (`^([A-Z]{2,8}-\d+(\.\d+)?|HF-...)$`) continues to accept the `.M` form so historical tickets remain valid; no validator change required.
+- **Files updated in the template:**
+  - `GOVERNANCE.md` §1: sub-task filename pattern row → flat ID, relationship in frontmatter.
+  - `GOVERNANCE.md` §2: ID format text updated, `.M` form explicitly marked deprecated-for-new-tickets, regex annotated.
+  - `GOVERNANCE.md` §7: branch naming row for sub-task updated to same shape as story.
+  - `GOVERNANCE.md` §9: injection decision tree updated to instruct new flat-ID + `parent:` / `children:` wiring instead of `EPIC-N.M`.
+- **No file moves:** purely a forward-looking convention; no existing ticket renamed or relocated. Downstream projects inherit this on next template sync.
+

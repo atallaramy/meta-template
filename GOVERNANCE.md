@@ -11,19 +11,21 @@
 |---|---|---|---|
 | **Epic** | Domain-level capability charter (not a task — a scope definition) | `epics/` | `<CODE>.md` |
 | **Story** | A concrete, shippable unit of work inside an epic | `tickets/{status}/` | `<CODE>-<N>-<slug>.md` |
-| **Sub-task** | Optional split of a large story | `tickets/{status}/` | `<CODE>-<N>.<M>-<slug>.md` |
+| **Sub-task** | Optional split of a large story | `tickets/{status}/` | `<CODE>-<N>-<slug>.md` (flat ID, same shape as a story; relationship encoded via `parent:` / `children:` frontmatter — NOT in the ID) |
 | **Hotfix** | Urgent, out-of-band fix. Date-stamped, not epic-numbered. | `hotfix/` | `HF-YYYY-MM-DD-<slug>.md` |
 
 ---
 
 ## 2. ID scheme
 
-- Format: `<EPIC>-<N>` (story) or `<EPIC>-<N>.<M>` (sub-task) or `HF-YYYY-MM-DD-<slug>` (hotfix)
+- Format: `<EPIC>-<N>` (story OR sub-task) or `HF-YYYY-MM-DD-<slug>` (hotfix)
 - `<EPIC>` is a code from the **Epic Registry** (section 3).
 - `<N>` is the next available integer within that epic, **never recycled**.
+- **Sub-tasks use flat IDs**, not decimals. A sub-task's relationship to its parent is encoded in the `parent:` / `children:` frontmatter fields — never embedded in the ID. Example: when `EPIC-7` is split into sub-tasks, the children are `EPIC-8`, `EPIC-9` (next available `<N>` in the same epic), each with `parent: EPIC-7`, and `EPIC-7` carries `children: [EPIC-8, EPIC-9]`. Reasoning: a decimal ID like `EPIC-7.1` reads like a version label, not a child reference; flat IDs match Jira / Linear / GitHub Issues conventions.
+- **`<EPIC>-<N>.<M>` (decimal) form is deprecated for new tickets** but the validator regex retains it so any historical decimal IDs you carry forward stay valid. Do not introduce new `.M` IDs.
 - **IDs are immutable once assigned.** Filename slug can be renamed, folder can change (status transitions), but the `ID` field in frontmatter is permanent.
 - **Retroactive numbering is chronological.** When assigning IDs to existing-but-unticketed work, number by the order the work actually shipped (earliest = N=1), not by file creation date. This keeps the ticket timeline aligned with the git history.
-- **Regex:** `^([A-Z]{2,8}-\d+(\.\d+)?|HF-\d{4}-\d{2}-\d{2}-[a-z0-9-]+)$`
+- **Regex:** `^([A-Z]{2,8}-\d+(\.\d+)?|HF-\d{4}-\d{2}-\d{2}-[a-z0-9-]+)$` (accepts both flat and historical `.M` forms; do not use `.M` for new tickets)
 
 ### Filename convention
 
@@ -193,7 +195,7 @@ Note format in MIGRATION-LOG (or adjacent log):
 | Work type | Branch pattern |
 |---|---|
 | Story | `feat/<EPIC>-<N>-<slug>` e.g. `feat/AUTH-1-login-flow` |
-| Sub-task of a story | `feat/<EPIC>-<N>.<M>-<slug>` |
+| Sub-task of a story | `feat/<EPIC>-<N>-<slug>` (same shape as a story — sub-task uses its own flat ID; parent/child relationship lives in frontmatter, not in the branch name) |
 | Hotfix | `hotfix/HF-<date>-<slug>` |
 | Refactor with no feature change | `chore/<EPIC>-<N>-<slug>` |
 
@@ -216,8 +218,8 @@ Note format in MIGRATION-LOG (or adjacent log):
 Is it urgent + small + out-of-band?
 ├── YES → hotfix (date-stamped file in hotfix/, own branch)
 └── NO  → Is it needed to complete the current ticket?
-         ├── YES → sub-task of current ticket (EPIC-N.M)
-         └── NO  → new story (EPIC-M) — set `discovered_from` to current ticket
+         ├── YES → sub-task of current ticket (new flat ID `EPIC-<next-N>`; set `parent:` on the sub-task + add the new ID to the parent's `children:`)
+         └── NO  → new story (`EPIC-<next-N>`) — set `discovered_from` to current ticket
                     ├── blocks current ticket? move current to blocked/, add blocked_by
                     └── doesn't block? current continues; new story enters backlog/
 ```
