@@ -34,15 +34,35 @@ Finalize ticket `$ARGUMENTS` as shipped. Moves it from `active/` to `done/`, fil
    ```
 6. **Regen INDEX.** `python scripts/build_index.py`
 7. **Validate.** `python scripts/build_index.py --validate` — must pass. Folder/status match (`done/` + `status: done`) is enforced.
-8. **Report:**
-   - Ticket moved: `active/$ARGUMENTS-<slug>.md` → `done/`
-   - FEATURES.md row appended
-   - Any follow-up tickets created (with IDs)
-   - Reminder: commit the move + FEATURES update in a single `chore(meta): ship $ARGUMENTS` commit.
+8. **Commit automatically.** Shipping IS the commit — no second roundtrip. Run as one shell sequence:
+   ```bash
+   cd meta && \
+     git add tickets/active/$ARGUMENTS-*.md tickets/done/$ARGUMENTS-*.md \
+             INDEX.md INDEX.json PROD-READINESS.md FEATURES.md 2>/dev/null; \
+     git add tickets/backlog/  # any spawned follow-up tickets
+     git commit -m "$(cat <<'EOF'
+   chore(meta): ship $ARGUMENTS — <one-line capability or "control hardening" summary>
+
+   <2-4 lines pulled from the Retrospective §What actually shipped: PR
+   URLs / squash SHAs across the touched sub-repos + the headline change.>
+   EOF
+   )"
+   ```
+   If the pre-commit hooks fail, fix the surfaced issue, re-stage, create a NEW commit (never `--amend`).
+
+9. **Publish per your meta-repo policy.** Push (or open a PR) according to your project's convention — direct push to the meta repo's main branch if allowed, otherwise open a PR. Document the chosen policy in your project's `CLAUDE.md` so this step is unambiguous. NEVER force-push.
+
+10. **Report:**
+    - Ticket moved + committed: `active/$ARGUMENTS-<slug>.md` → `done/`
+    - Meta commit SHA + publish result (push SHA or PR URL, per policy)
+    - FEATURES.md row appended (or skipped — one-line justification)
+    - Any follow-up tickets created (with IDs)
 
 ## Guard rails
 
-- **Never auto-commit.** Leave everything staged or unstaged — user commits when ready.
+- **Auto-commit is the default.** Shipping is a single user action; breaking it into ship + commit is friction without value. Publishing (push vs. PR) follows your meta-repo policy — document it in `CLAUDE.md`.
 - **Never delete branches.** The actual feature branches live in sub-repos; branch cleanup is a separate concern handled by the `committer` agent after PR merge, not this skill.
 - **Never re-write existing Retrospective content.** If the section is already populated, append below existing text with a dated header — don't overwrite.
-- **Validate before finishing.** If the validator fails after the move (e.g. status/folder mismatch), stop and surface the error — do not leave the repo in a broken state.
+- **Validate before committing.** If the validator fails after the move (e.g. status/folder mismatch), stop and surface the error — do not commit a broken state.
+- **Never force-push.** If push is rejected, rebase against the base branch and retry; if rebase has conflicts, stop and surface.
+- **Never bypass hooks.** No `--no-verify`. Pre-commit hooks must pass; on failure, fix root cause + new commit.
