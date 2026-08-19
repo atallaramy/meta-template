@@ -33,14 +33,14 @@ Body explaining **why** (paragraph or bullet points with `- `)
 ### Examples
 
 ```
-feat(auth): add password strength meter (AUTH-3)
+feat(auth): add password strength meter (EX-3)
 
 Implemented client-side strength estimation with zxcvbn. Lifts users
 above the 12-character floor without nagging on every keystroke.
 ```
 
 ```
-fix(api): handle empty pagination cursor (API-7)
+fix(api): handle empty pagination cursor (EX-7)
 
 - Fallback to page-1 instead of 500
 - Return Link headers consistent with cursor convention
@@ -135,8 +135,13 @@ After pushing a feature branch, proceed through these steps **with user approval
 
 - `git checkout <base> && git pull && git branch -d <feature-branch>`
 
+### Step 5: Ship the ticket
+
+- **Merged work SHIPS, in this session (GOVERNANCE §15.1).** After the merge, run (or tell the user to run) `/ticket-ship <ID>` for every ticket whose work just landed. A ticket left `active` after its code merged is the stale-record failure §15.1 exists to stop — the job does not end at branch cleanup.
+
 ## Definition of Done
 
 - Commit message follows conventional format with body
 - Only relevant files staged
 - User approved each step (stage, commit, push, PR, merge)
+- Every merged ticket shipped via `/ticket-ship` (or explicitly handed to the user to ship)

@@ -24,8 +24,29 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: validator unit tests (build_index.py — gates every commit)
+        run: python3 scripts/test_build_index.py
+
+      # claude-config/ is optional (deletable for non-Claude-Code projects) —
+      # the two hook steps skip themselves when it is gone, instead of failing.
+      - name: review-gate unit tests (the hooks that gate every commit)
+        if: ${{ hashFiles('claude-config/hooks/review_gate_test.py') != '' }}
+        run: python3 claude-config/hooks/review_gate_test.py
+
+      - name: review-gate red states (every guard must be breakable)
+        if: ${{ hashFiles('claude-config/hooks/red_states.py') != '' }}
+        run: python3 claude-config/hooks/red_states.py
+
       - name: validate ticket frontmatter + cross-refs
-        run: python scripts/build_index.py --validate
+        run: python3 scripts/build_index.py --validate
 
       - name: INDEX.md + INDEX.json up-to-date
-        run: python scripts/build_index.py --check
+        run: python3 scripts/build_index.py --check
+
+      # GOVERNANCE §19.8 gauge — a REPORT, never a gate (two gates for one
+      # claim would mean the honest one is the one nobody reads). Without
+      # this step nothing executes --health at all. No pipe — a pipe once cut
+      # away the very line a report step existed to show.
+      - name: ticket-system health gauge (report only)
+        continue-on-error: true
+        run: python3 scripts/build_index.py --health

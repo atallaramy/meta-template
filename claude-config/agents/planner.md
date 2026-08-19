@@ -46,7 +46,7 @@ You are the implementation planner for this project.
    f. Still tied → pick the epic whose BUSINESS OUTCOME this serves, not the mechanism.
    g. Not confident? **ASK THE USER** — do not guess silently.
 4. Check the Disambiguation Examples table in GOVERNANCE section 3. If your item matches a row, that's your epic — no further reasoning needed.
-5. Read `meta/INDEX.md` (or query `meta/INDEX.json`) for the next available ID in the chosen epic (e.g. if `EMAIL-1` exists, next is `EMAIL-2`).
+5. Read `meta/INDEX.md` (or query `meta/INDEX.json`) for the next available ID in the chosen epic (e.g. if `EX-1` exists, next is `EX-2`).
 6. If you resolve an ambiguity that isn't in the Disambiguation Examples table, ADD it to the table as part of your ticket PR — every resolved ambiguity becomes a future shortcut.
 
 **Never guess silently.** When the algorithm doesn't settle it by step 6 (business outcome), present the 2 candidate epics with a one-line rationale each, recommend one, wait for the answer.
@@ -60,15 +60,15 @@ You are the implementation planner for this project.
 5. Identify all available options
 6. Present trade-offs — pause at decision points, show 2-3 options with tradeoffs, ask the user
 7. Copy `meta/templates/TICKET.md` to `meta/tickets/backlog/<EPIC>-<N>-<slug>.md`
-8. Fill in: frontmatter (id, title, epic, status, created, parent, blocks, blocked_by, discovered_from, repos), Context, Scope (in/out), Plan (checklist), Acceptance criteria, Verification, Risks/open questions
+8. Fill in: frontmatter (id, title, epic, status, **priority** — spawned → P3, root → P2, with `priority_because` for P0/P1 (GOVERNANCE §9.3 + §19), created, parent, blocks, blocked_by, discovered_from, repos, sensitive), Context, **Compliance Impact** (or "none" + justification), Scope (in/out), Plan (checklist), Acceptance criteria, Verification, Risks/open questions
 9. If starting work immediately: `git mv` the ticket from `backlog/` to `active/` and update the `status:` field to match
-10. Regenerate index: `python meta/scripts/build_index.py`
+10. Regenerate index: `python3 meta/scripts/build_index.py`
 
 ## Ticket Structure
 
 Use the template at `meta/templates/TICKET.md`. Do not invent your own structure — the validator enforces consistency.
 
-Key frontmatter fields (immutable once committed):
+Key frontmatter fields (`id` is immutable once committed; the rest evolve):
 
 - `id`: `<EPIC>-<N>` format from the epic registry (GOVERNANCE section 3)
 - `epic`: must match an epic code

@@ -12,6 +12,7 @@ Start work on ticket `$ARGUMENTS`. Rules: GOVERNANCE §4 (folder=status), §7 (b
 1. **Locate.** Glob `meta/tickets/backlog/$ARGUMENTS-*.md`. If 0 matches → error "ticket not in backlog". If >1 → error (duplicate ID — validator should have caught this).
 2. **Read frontmatter.** Must have `status: backlog`. Capture `repos:` list and the filename slug.
 3. **Pre-flight.** Confirm working tree clean in every repo listed in `repos:` (run `git status --porcelain` in each). If any dirty → ask the user before proceeding.
+   - **Queue gate (GOVERNANCE §19.7):** if the ticket is P2/P3 and `ROADMAP.md`'s Execution queue has an unstarted item, refuse — unless the owner overrides, and record the override with its one-line reason.
 4. **Transition status.**
    - `cd meta && git mv tickets/backlog/$ARGUMENTS-<slug>.md tickets/active/`
    - Edit frontmatter: `status: active`, bump `updated:` to today's date.
@@ -20,8 +21,8 @@ Start work on ticket `$ARGUMENTS`. Rules: GOVERNANCE §4 (folder=status), §7 (b
    - `cd <repo> && git fetch origin && git checkout <base> && git pull --ff-only && git checkout -b feat/$ARGUMENTS-<slug>`
    - (`<base>` = the configured base branch, e.g. `develop` or `main`.)
    - If the branch already exists, checkout without `-b` and report.
-6. **Regenerate INDEX.** `cd meta && python scripts/build_index.py`
-7. **Validate.** `python scripts/build_index.py --validate`. If errors → stop and surface.
+6. **Regenerate INDEX.** `cd meta && python3 scripts/build_index.py`
+7. **Validate.** `python3 scripts/build_index.py --validate`. If errors → stop and surface.
 8. **Report** in one block:
    - Ticket path
    - Branch name

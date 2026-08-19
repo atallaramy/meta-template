@@ -7,10 +7,10 @@ These commands automate the ticket lifecycle defined in `meta/GOVERNANCE.md`. Th
 | Command | Purpose | Rule source |
 |---|---|---|
 | `/ticket-start <ID>` | Move backlog → active, set status, create branches in listed sub-repos | GOVERNANCE §4 (folder=status), §7 (branch naming), §5 (`repos:` field) |
-| `/ticket-pause [<ID>]` | Write `next_action:`, stamp STATUS, regen INDEX. No WIP commit. | GOVERNANCE §15.1 (always pause at session end), §5 (`next_action:` field) |
+| `/ticket-pause [<ID>]` | Write `next_action:`, stamp STATUS, regen INDEX. No WIP commit. | GOVERNANCE §15.1 (merged work SHIPS; only unfinished work pauses), §5 (`next_action:` field) |
 | `/ticket-resume <ID>` | Read `next_action:`, show branch state, prime context. Read-only. | GOVERNANCE §5 (`next_action:` as handoff pointer) |
 | `/decide [<ID>]` | Append a decision (options + pick + rationale) to the active ticket | GOVERNANCE §15.2 (decisions live in tickets, not chat) |
-| `/ticket-ship <ID>` | Fill retrospective, move active → done, append to FEATURES.md, regen INDEX | GOVERNANCE §4 (folder=status), §13 (plan + retro in one file) |
+| `/ticket-ship <ID>` | Fill retrospective, move active → done, append to FEATURES.md, regen INDEX | GOVERNANCE §15.1 (ship AT the merge), §15.3 (deferred acceptance criteria), §4, §13 |
 
 ## Where they live
 

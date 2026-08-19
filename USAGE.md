@@ -16,7 +16,7 @@
 
 Just tell the AI: `"continue from where we left off"` or `"new session — read status"`. It will read `STATUS.md` → `ROADMAP.md` → the current ticket, then offer the next step.
 
-If you want the AI to pick up a specific ticket: `"work on AUTH-3"` or `"continue AUTH-1 phase 2"`.
+If you want the AI to pick up a specific ticket: `"work on EX-3"` or `"continue EX-1 phase 2"`.
 
 ### End of session — the "save state" pattern
 
@@ -24,7 +24,7 @@ Run `/ticket-pause` (or ask the AI to do it). This:
 
 1. Writes `next_action:` in the active ticket frontmatter (one sentence — concrete, imperative)
 2. Bumps `updated:` to today
-3. Appends a line to `STATUS.md` Session handoffs
+3. Overwrites the `## Current State` block in `STATUS.md` (a snapshot, never an appended log — GOVERNANCE §18)
 4. Regenerates `INDEX.md` + `INDEX.json`
 
 No WIP commit is made — pause is a bookmark, not a checkpoint. If switching machines, also `git stash` or commit manually.
@@ -50,8 +50,8 @@ Run `/ticket-resume <TICKET-ID>` (or `/ticket-resume` if there's only one active
 If you hit something while working on ticket X that needs its own story:
 
 - **Urgent + small + out-of-band** → hotfix (next section)
-- **Needed to complete current ticket** → sub-task `<EPIC>-<N>.<M>` under the current ticket
-- **Separate concern, not urgent** → new story in `backlog/`, set `discovered_from: <current-ticket-id>` in its frontmatter. If it blocks the current work, move the current ticket to `blocked/` with `blocked_by: [<new-ticket-id>]`.
+- **Needed to complete current ticket** → sub-task with its own flat ID (`<EPIC>-<next-N>`, `parent:` set — GOVERNANCE §2)
+- **Separate concern, not urgent** → new story in `backlog/`, set `discovered_from: <current-ticket-id>` in its frontmatter — it is **born P3** (GOVERNANCE §9.3). If it blocks the current work, move the current ticket to `blocked/` with `blocked_by: [<new-ticket-id>]`.
 
 Tell the AI: `"discovered a new issue while working on X — it's Y. Create a ticket."` It'll apply the decision tree (GOVERNANCE section 9).
 
@@ -61,7 +61,7 @@ When the AI presents 2-3 options and you pick one, run `/decide` to capture the 
 
 ### Finish a feature
 
-When acceptance criteria are all `- [x]`, run `/ticket-ship <TICKET-ID>`. It:
+Run `/ticket-ship <TICKET-ID>` **at the merge, in the same session** — merged work ships, it does not pause (GOVERNANCE §15.1). It:
 
 1. Asks for retrospective inputs (commit SHAs/PRs, deviations, lessons)
 2. Fills the `## Retrospective` section
@@ -84,6 +84,25 @@ Production/staging is on fire:
 
 ---
 
+## How priorities and the queue work
+
+Four levels, answering **when**, not *how bad* (GOVERNANCE §19):
+
+- **P0** — stop now (data loss, security exposure, a shipped artifact silently wrong). Interrupts.
+- **P1** — do next; blocks the current gate (the dated one-liner in `ROADMAP.md`) and you can name which step. Becomes next, never interrupts.
+- **P2** — before launch, not before the gate. Root tickets (customer/roadmap/plan) default here.
+- **P3** — later. **Every ticket spawned by other work (`discovered_from` set) is born P3** — recorded forever, promised to no one. It earns P2 only with one line naming who is hurt and when.
+
+The `ROADMAP.md` **Execution queue** is the only promise list — capped at **7 live items**; adding
+one names what it displaces, and shipped entries move to `QUEUE-LOG.md` the same day. **Filing a
+P0/P1 slots it in the queue in the same commit** — the validator refuses an unslotted P0/P1 (§9.2). Everything
+else lives in `INDEX.md` — a record, not a debt. Propose a promotion by setting
+`proposed_priority:` on the ticket; the owner answers in one word, and
+`python3 scripts/build_index.py --health` (run monthly) resurfaces every unanswered proposal plus a
+tripwire that fires when ticket creation is feeding on itself.
+
+---
+
 ## Archiving (never delete)
 
 `rm` is banned (`GOVERNANCE.md` section 6). When a file is superseded, uncertain, or obsolete:
@@ -99,19 +118,25 @@ If you're tempted to `rm`: don't. Archive and let it sit — near-zero cost, ful
 
 ```bash
 # Regenerate INDEX.md + INDEX.json after any ticket edit
-python scripts/build_index.py
+python3 scripts/build_index.py
 
 # Validate only (no file writes) — fails on schema violations
-python scripts/build_index.py --validate
+python3 scripts/build_index.py --validate
 
 # Check that committed INDEX files match ticket state — CI uses this
-python scripts/build_index.py --check
+python3 scripts/build_index.py --check
 
 # Find all backlog SEC tickets (jq on INDEX.json)
 jq '.[] | select(.epic == "SEC" and .status == "backlog")' INDEX.json
 
-# Find everything blocked by INFRA-3
-jq '.[] | select(.blocked_by | contains(["INFRA-3"]))' INDEX.json
+# List all P0 / P1 tickets (deterministic — never eyeball the backlog)
+python3 scripts/build_index.py --priority P0
+
+# The monthly health gauge: created vs closed, root vs spawned, unanswered proposals
+python3 scripts/build_index.py --health
+
+# Find everything blocked by EX-3
+jq '.[] | select(.blocked_by | contains(["EX-3"]))' INDEX.json
 
 # Find tickets touched in the last week
 jq '.[] | select(.updated >= "2026-01-01")' INDEX.json
@@ -122,11 +147,11 @@ jq '.[] | select(.updated >= "2026-01-01")' INDEX.json
 ## Asking the AI to do things well
 
 **Good prompts:**
-- `"resume AUTH-1 — read the ticket and propose the next step"`
+- `"resume EX-1 — read the ticket and propose the next step"`
 - `"start a new INFRA feature: geo-redundant backups"`
 - `"this is a hotfix: password reset links are broken in staging"`
-- `"update STATUS and close AUTH-4, move to done, commit"`
-- `"archive PLAN-foo.md — content already absorbed into AUTH-3"`
+- `"update STATUS and close EX-4, move to done, commit"`
+- `"archive PLAN-foo.md — content already absorbed into EX-3"`
 
 **Weak prompts (AI will ask clarifying questions):**
 - `"fix the thing"`
@@ -139,7 +164,7 @@ jq '.[] | select(.updated >= "2026-01-01")' INDEX.json
 
 ## When something feels wrong
 
-- Validation fails? Run `python scripts/build_index.py --validate` — the error tells you which ticket + which field
+- Validation fails? Run `python3 scripts/build_index.py --validate` — the error tells you which ticket + which field
 - Can't find a plan that used to exist? Check `MIGRATION-LOG.md` for old path → new path mapping, or `_archive/`
 - Stuck deciding an epic? Read the epic charter (`epics/<CODE>.md`) — if boundaries still unclear, file a boundary question PR on GOVERNANCE.md
 

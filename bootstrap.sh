@@ -22,7 +22,11 @@ if [[ "$(basename "$SCRIPT_DIR")" == "meta-template" ]]; then
 fi
 
 # ---- Sanity: verify we're in something that looks like our template ---------
-for required in GOVERNANCE.md README.md STATUS.md scripts/build_index.py; do
+# claude-config/ is deliberately NOT in this list — it is optional and
+# deletable for non-Claude-Code projects (claude-config/README.md).
+for required in GOVERNANCE.md README.md STATUS.md ROADMAP.md QUEUE-LOG.md \
+                PENDING-VERIFICATIONS.md new_session.md \
+                scripts/build_index.py scripts/test_build_index.py; do
   if [[ ! -f "$required" ]]; then
     echo "ERROR: $required not found. Are you in the meta/ folder?"
     exit 1
@@ -95,7 +99,14 @@ fi
 # ---- Optionally git init ---------------------------------------------------
 echo
 if [[ -d .git ]]; then
-  echo ".git already exists — skipping git init."
+  # A copied template can drag its OWN .git along (history + origin remote that
+  # belong to the template, not to this project). Refuse to adopt it silently.
+  if git remote get-url origin 2>/dev/null | grep -q "meta-template"; then
+    echo "WARNING: this .git looks inherited from the template (origin names meta-template)."
+    echo "         Remove it and re-run to start a fresh history:  rm -rf .git && ./bootstrap.sh"
+  else
+    echo ".git already exists — skipping git init."
+  fi
 else
   read -r -p "Initialize a fresh git repo for this meta/ folder? [Y/n] " ans
   if [[ ! "${ans:-Y}" =~ ^[Nn]$ ]]; then
@@ -123,10 +134,13 @@ fi
 echo
 echo "Bootstrap complete."
 echo "Next steps:"
-echo "  1. Edit STATUS.md and ROADMAP.md to describe your project's current state."
+echo "  1. Edit STATUS.md and ROADMAP.md — fill the >>> CURRENT GATE <<< line (one line, one date)."
 echo "  2. Trim or extend the seed epics in epics/ to match what you're building."
-echo "  3. (Optional) install pre-commit hooks: pre-commit install"
-echo "  4. (Optional) copy claude-config/ into the project root's .claude/ if you use Claude Code."
+echo "  3. Name your repos in scripts/build_index.py (SIBLING_REPOS + VALID_REPOS — the validator requires VALID_REPOS once SIBLING_REPOS is set)."
+echo "  4. Symlink the session prompt at the project root: ln -s meta/new_session.md ../new_session"
+echo "  5. (Optional) install pre-commit hooks: pre-commit install"
+echo "  6. (Optional) copy claude-config/ into the project root's .claude/ if you use Claude Code,"
+echo "     and see claude-config/hooks/README.md to enable the review-gate hooks."
 echo
 read -r -p "Delete bootstrap.sh now? [Y/n] " ans
 if [[ ! "${ans:-Y}" =~ ^[Nn]$ ]]; then

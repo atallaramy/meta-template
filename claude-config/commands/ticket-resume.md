@@ -11,7 +11,7 @@ Re-hydrate context for ticket `$ARGUMENTS`. Inverse of `/ticket-pause`.
 
 1. **Locate.** Find `meta/tickets/active/$ARGUMENTS-*.md`. If not found:
    - Check `backlog/` → ticket is ready but not started; suggest `/ticket-start $ARGUMENTS`.
-   - Check `parked/` → ticket is gated by an external trigger. Read its `parked_until:` and report: "ticket `$ARGUMENTS` is parked until `<trigger>`; activate by moving to `backlog/` and clearing `parked_until:` first, then re-run." Do NOT auto-unpark.
+   - Check `parked/` → ticket is gated by an external trigger. Read its `parked_until:` and report: "ticket `$ARGUMENTS` is parked until `<trigger>`; activate by moving to `backlog/`, clearing `parked_until:`, and assigning a `priority:` (§19 — parked tickets carry none, backlog tickets must), then re-run." Do NOT auto-unpark.
    - Check `blocked/` → ticket is waiting on an internal dependency; report the `blocked_by:` list.
    - Check `done/` → ticket has shipped; suggest reading its retrospective.
 2. **Read the ticket.**

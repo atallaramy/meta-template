@@ -14,15 +14,22 @@ repos:
 
   - repo: local
     hooks:
-      # --fix mode validates frontmatter, auto-clears stale blocked_by entries
-      # (references to tickets in tickets/done/), regenerates INDEX, auto-ticks
-      # PROD-READINESS if present, and `git add`s any touched files so the
-      # human sees them in the commit. Replaces the older --validate+--check
-      # hook pair locally; CI workflows keep the granular layout for defense
-      # in depth against --no-verify / external edits / force-pushes.
+      # --fix replaces the previous --validate/--check pair locally.
+      # It validates frontmatter (returns non-zero on errors), auto-clears
+      # stale blocked_by entries (refs to done tickets), regenerates INDEX,
+      # auto-ticks PROD-READINESS if present, and `git add`s any touched files
+      # so the human sees them in the commit. CI keeps the separate --validate
+      # + --check steps for defense-in-depth against --no-verify or external
+      # edits (see .github/workflows/validate.yml).
+      #
+      # `always_run: true`, not a `files:` filter: a filter lists gated paths
+      # one at a time, and the source project's filter had already silently
+      # missed one (STATUS.md) before it was dropped. `pass_filenames: false`
+      # already made the filter a trigger rather than an input, so running
+      # unconditionally changes only WHEN the hook fires, not what it does.
       - id: tickets-fix-and-index
-        name: tickets — auto-clear stale blocked_by + regen INDEX
-        entry: python scripts/build_index.py --fix
+        name: tickets — auto-clear stale blocked_by + regen INDEX + §18/§20 caps
+        entry: python3 scripts/build_index.py --fix
         language: system
         pass_filenames: false
-        files: ^(tickets/|hotfix/|epics/|GOVERNANCE\.md|PROD-READINESS\.md|INDEX\.md|INDEX\.json)
+        always_run: true

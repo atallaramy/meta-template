@@ -10,19 +10,37 @@
 
 ## Current focus                              `>>> CURRENT <<<`
 
-*(Replace with the current top priority — usually a ticket ID + one-paragraph description of why it matters now.)*
+> ### `>>> CURRENT GATE <<<`
+>
+> **<define your gate — one line, one date>**
+>
+> This is the single line every `P1` points at (GOVERNANCE §19). A ticket is P1 **only** if it
+> blocks this gate and you can name which step of it stops. When the gate moves — demo → first real
+> users → first paid pilot — rewrite this line and every P1 re-points automatically. One gate at a
+> time, always dated. Changing it is an owner decision.
+
+*(Below the gate: the current top priority — usually a ticket ID + one-paragraph description of why it matters now.)*
 
 ---
 
-## Active
+## Execution queue                            `>>> EXECUTE IN THIS ORDER <<<`
 
-| Ticket | Why it matters |
-|---|---|
-| *(none yet)* | |
+This list is the PROMISE — at most **7 live items** (GOVERNANCE §9.2), owner-owned, readable in one
+screen. Adding an item names the item it displaces; a shipped entry moves to
+[`QUEUE-LOG.md`](QUEUE-LOG.md) the same day. P1 = "next" per §19.5; the order below is the owner's.
 
-## Up next (priority order)
+<!-- queue:begin (max 7 live items — GOVERNANCE §9.2; counted by scripts/build_index.py --validate) -->
+<!-- queue:end -->
 
-1. *(Add tickets here in the order you intend to ship them.)*
+After the queue drains → your milestone plan below.
+
+---
+
+## Milestones
+
+*(Your milestone plan — shape the work into demoable milestones. The Execution queue above carries
+the ONLY per-item promises; §9.2 forbids a second "slot when convenient" list, and the live ticket
+view is `INDEX.md`, not this file.)*
 
 ---
 

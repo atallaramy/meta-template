@@ -5,12 +5,15 @@ argument-hint: <TICKET-ID>
 
 # /ticket-ship $ARGUMENTS
 
-Finalize ticket `$ARGUMENTS` as shipped. Moves it from `active/` to `done/`, fills the Retrospective, appends one line to `FEATURES.md`. Rules: GOVERNANCE §4 (folder=status), §13 (ticket structure — plan + retro in one file).
+Finalize ticket `$ARGUMENTS` as shipped — **at the merge, in the same session** (GOVERNANCE §15.1: merged work ships, it does not pause). Moves it from `active/` to `done/`, fills the Retrospective, appends one line to `FEATURES.md`. Rules: GOVERNANCE §4 (folder=status), §13 (ticket structure — plan + retro in one file), §15.1, §15.3.
 
 ## Pre-flight checks (stop and surface to user on any failure)
 
 1. **Located.** Ticket must be at `meta/tickets/active/$ARGUMENTS-*.md`. If not there → stop.
-2. **Acceptance criteria.** Read the ticket's `## Acceptance criteria` section. Every checkbox must be `[x]`. If any are `[ ]` → print the unchecked items and ask the user: "these aren't checked — ship anyway?" Do not proceed without explicit yes.
+2. **Acceptance criteria (GOVERNANCE §15.3).** Read the ticket's `## Acceptance criteria` section. For each `[ ]`:
+   - Verifiable NOW → tick it (ideally with an inline `*(Verified <date>: <evidence>)*` note).
+   - Time-deferred → leave `[ ]`, append `*(Pending: <trigger> — verify via <command>)*` to the AC line, AND add the matching row to `PENDING-VERIFICATIONS.md`. The validator refuses a done ticket with an untracked `[ ]`.
+   - Neither → ship is blocked; drop the AC with a `/decide` rationale, or hold the ticket.
 3. **Plan items.** Read `## Plan`. Same check — warn (don't block) on unchecked items.
 4. **Merged branch.** Read `branch:` from frontmatter. For each repo in `repos:`:
    - `git fetch origin` then `git log origin/<base> ^origin/<branch>` — if the branch has commits NOT on `<base>`, warn: "branch has unmerged commits — ship anyway?"
@@ -26,25 +29,30 @@ Finalize ticket `$ARGUMENTS` as shipped. Moves it from `active/` to `done/`, fil
 3. **Update frontmatter:**
    - `status: done`
    - bump `updated:` to today's date
-   - clear `next_action:` to `null` (ticket is done — no next action)
-4. **Move the file.** `cd meta && git mv tickets/active/$ARGUMENTS-<slug>.md tickets/done/`
-5. **Append to FEATURES.md.** One row, today's date, one-line feature description pulled from ticket title/retrospective, `scope` column lists the `repos:` touched.
+   - clear `next_action:` to `null` and remove `priority:` (done tickets carry none — GOVERNANCE §19)
+4. **Queue bookkeeping (GOVERNANCE §9.2).** If the ticket occupied a `ROADMAP.md` Execution-queue slot, move that entry to `QUEUE-LOG.md` the same day, verbatim, newest first.
+5. **Move the file.** `cd meta && git mv tickets/active/$ARGUMENTS-<slug>.md tickets/done/`
+6. **Append to FEATURES.md.** One row, today's date, one-line feature description pulled from ticket title/retrospective, `scope` column lists the `repos:` touched.
    ```
    | YYYY-MM-DD | <one-line feature description> | <comma-separated repos> |
    ```
-6. **Cross-reference compliance + product-strategy ledgers (if your project has them).** Ask the user, in one bundled turn:
+7. **Cross-reference compliance + product-strategy ledgers (if your project has them).** Ask the user, in one bundled turn:
    - **Compliance checklist.** If your project tracks compliance (SOC2, HIPAA, ISO27001, etc.) in `meta/compliance/<file>.md`, ask: "Does this ticket complete any items in the compliance checklist? List the line(s) or section IDs." **HARD GATE — do NOT touch the checklist file without an explicit, line-by-line user 'go'.** Compliance checklists are audit ledgers; silent ticks destroy traceability. On explicit go: tick the listed box(es) and append a short implementation-note pointing at this ticket. On "no" / "skip" / silence → leave the file alone and note `compliance: none` in the ship commit body so the skip is traceable.
    - **Product-strategy / production-readiness doc.** If your project tracks product strategy or production-readiness in a sibling repo, ask: "Does that doc need updating? (gates decided, bucket counts shifted, ticket moved between buckets, gate ticked, timeline revised?)" If yes, edit per user direction in that repo and commit + push there separately. If no, note the skip in the ship commit body.
    - Both edits happen BEFORE the meta commit so the checklist tick rides in the same ship-close action. The sibling-repo commit is referenced in the meta ship commit body if it happened.
-7. **Regen INDEX.** `python scripts/build_index.py`
-8. **Validate.** `python scripts/build_index.py --validate` — must pass. Folder/status match (`done/` + `status: done`) is enforced.
-9. **Commit automatically.** Shipping IS the commit — no second roundtrip. Run as one shell sequence:
+8. **Regen INDEX.** `python3 scripts/build_index.py`
+9. **Validate.** `python3 scripts/build_index.py --validate` — must pass. Folder/status match (`done/` + `status: done`) is enforced.
+10. **Commit automatically.** Shipping IS the commit — no second roundtrip. Run as one shell sequence:
    ```bash
    cd meta && \
-     git add tickets/active/$ARGUMENTS-*.md tickets/done/$ARGUMENTS-*.md \
-             INDEX.md INDEX.json PROD-READINESS.md FEATURES.md \
-             compliance/ 2>/dev/null; \
-     git add tickets/backlog/  # any spawned follow-up tickets
+     git add tickets/ INDEX.md INDEX.json FEATURES.md && \
+     { [ -f PROD-READINESS.md ] && git add PROD-READINESS.md; true; } && \
+     { [ -d compliance ] && git add compliance/; true; }
+     # `git add` is ATOMIC: one non-matching pathspec (e.g. an absent
+     # PROD-READINESS.md) aborts the whole call with ZERO files staged, and a
+     # `2>/dev/null` hides it — the ship commit then lands half-empty and CI's
+     # --check goes red later. Optional files are guarded, never blind-listed.
+     # `tickets/` covers the moved file AND any spawned follow-ups.
      git commit -m "$(cat <<'EOF'
    chore(meta): ship $ARGUMENTS — <one-line capability or "control hardening" summary>
 
@@ -58,9 +66,9 @@ Finalize ticket `$ARGUMENTS` as shipped. Moves it from `active/` to `done/`, fil
    ```
    If the pre-commit hooks fail, fix the surfaced issue, re-stage, create a NEW commit (never `--amend`).
 
-10. **Publish per your meta-repo policy.** Push (or open a PR) according to your project's convention — direct push to the meta repo's main branch if allowed, otherwise open a PR. Document the chosen policy in your project's `CLAUDE.md` so this step is unambiguous. NEVER force-push.
+11. **Publish per your meta-repo policy.** Push (or open a PR) according to your project's convention — direct push to the meta repo's main branch if allowed, otherwise open a PR. Document the chosen policy in your project's `CLAUDE.md` so this step is unambiguous. NEVER force-push.
 
-11. **Report:**
+12. **Report:**
     - Ticket moved + committed: `active/$ARGUMENTS-<slug>.md` → `done/`
     - Meta commit SHA + publish result (push SHA or PR URL, per policy)
     - FEATURES.md row appended (or skipped — one-line justification)

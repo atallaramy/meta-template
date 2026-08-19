@@ -1,14 +1,23 @@
 # {{PROJECT_NAME}} — Status
 
-## Where We Are
+> **THIS IS A SNAPSHOT — NOT A HISTORY LOG.** One `## Current State` block, OVERWRITTEN every
+> session — never prepend a new dated block. Size-capped at **120 lines / 16 KB** by
+> `scripts/build_index.py` (GOVERNANCE §18). History belongs in the shipping ticket's
+> `## Retrospective`.
 
-*(Replace this with a short paragraph describing the current state of the project. Refresh at the end of every session. Include dates, ticket IDs, commit SHAs where relevant.)*
+## Current State
 
-## What's Next
+*(One block. Overwrite it every session — dates, ticket IDs, commit SHAs where relevant.)*
 
-*(Bulleted list of the next 2-5 priorities, each linking to a ticket. The first item should match `>>> CURRENT <<<` in `ROADMAP.md`.)*
+## Next
+
+*(The next pick + a pointer to `ROADMAP.md` / `INDEX.md`. Don't duplicate the backlog here.)*
 
 - *(no active tickets yet — create one with the `TICKET.md` template)*
+
+## Pending Verifications
+
+> Time-deferred acceptance criteria live in [`PENDING-VERIFICATIONS.md`](PENDING-VERIFICATIONS.md) (GOVERNANCE §15.3). This section stays a one-line pointer — the validator bounds it.
 
 ## Known Issues
 
@@ -16,15 +25,12 @@
 
 - *(none)*
 
-## Session handoffs
-
-*(Auto-appended by `/ticket-pause`. One line per session: date — `<TICKET-ID>` paused. Next: `<next_action>`.)*
-
 ## Quick reference
 
 | What | Where |
 |---|---|
-| Roadmap + current focus | `ROADMAP.md` |
+| Roadmap + current gate + queue | `ROADMAP.md` |
 | All tickets (auto-generated) | `INDEX.md` |
 | Rules / governance | `GOVERNANCE.md` |
+| Session prompt | `new_session.md` (symlink `new_session` at project root) |
 | Templates | `templates/` |

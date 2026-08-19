@@ -6,6 +6,7 @@ This folder contains backup copies of the AI tooling that lives at your project 
 
 - `agents/*.md` — generic specialized agents (committer, planner, analyzer, structure, researcher, best-practices)
 - `commands/*.md` — slash commands that automate the ticket lifecycle (`/ticket-start`, `/ticket-resume`, `/ticket-pause`, `/ticket-ship`, `/decide`)
+- `hooks/` — the review-gate commit + claim hooks, their tests, and their red-state prover (ship disabled; see `hooks/README.md` to enable)
 - `CLAUDE.md` — project-level Claude Code instructions slice
 
 ## Why backup copies live here
@@ -19,8 +20,10 @@ After running `bootstrap.sh`:
 ```sh
 # From the project root (parent of meta/)
 mkdir -p .claude/agents .claude/commands
-cp meta/claude-config/agents/*.md .claude/agents/
-cp meta/claude-config/commands/*.md .claude/commands/
+# lowercase globs skip each folder's README.md — it documents the folder,
+# it is not an agent/command definition
+cp meta/claude-config/agents/[a-z]*.md .claude/agents/
+cp meta/claude-config/commands/[a-z]*.md .claude/commands/
 cp meta/claude-config/CLAUDE.md .claude/CLAUDE.md
 ```
 
