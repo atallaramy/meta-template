@@ -108,6 +108,13 @@ class CommitDetection(unittest.TestCase):
         "timeout 120 git commit -m x",                            # wrapper missing from the set
         "sed -i s#a#b# f.txt && git commit -am x",                # shlex comment ate the joined line
         'echo a#b && git commit -m x',
+        "builtin git commit -m x",                                # sibling of command/exec
+        "builtin eval git commit -m x",
+        "runuser -u me git commit -m x",                          # sibling of sudo/doas
+        # whitespace_split=False splits `$`,`,`,`:` into their own tokens (they
+        # are neither wordchars nor punctuation_chars), so the -C scan eats the
+        # wrong token — this form pins the flag WITHOUT shell-variable syntax:
+        "git -C /tmp/a,b commit -m x",
     )
 
     def test_reproduced_bypasses_are_now_caught(self) -> None:
@@ -395,11 +402,12 @@ class Describe(unittest.TestCase):
 
 
 class Tokeniser(unittest.TestCase):
-    """Pins tokeniser OUTPUT shapes. Honesty note (measured in review): with
-    `punctuation_chars=True`, flipping `whitespace_split` to False leaves this
-    whole suite green — the settings overlap, so `whitespace_split` is
-    belt-and-braces, not independently observable. These tests pin the shapes
-    the gate depends on, not each flag."""
+    """Pins tokeniser OUTPUT shapes. `whitespace_split=True` IS independently
+    observable (a review differential harness measured five verdict changes
+    when flipped): `punctuation_chars=True` extends wordchars only by
+    `*-./=?~`, so `$`, `,` and `:` become standalone tokens without it and
+    `git -C $r commit` / `git -C /tmp/a,b commit` degrade to MISS. The flip
+    is red-stated via REPRODUCED_BYPASSES' `$r` and `/tmp/a,b` forms."""
 
     def test_quoting_is_honoured(self) -> None:
         """Without posix quote handling, a quoted string stops being one token and prose matches."""

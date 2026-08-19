@@ -30,10 +30,12 @@ or accept occasional false blocks. The deliver-mode gate and dismissal branch ar
 RESIDUAL KNOWN GAPS (documented, not hidden): `_repo_of` picks the OUTERMOST path component named
 in KNOWN_REPOS, not the actual git toplevel — an ancestor directory that happens to carry one of
 those names mis-attributes every commit under it (a real fix needs `git rev-parse --show-toplevel`
-per call, with the latency that implies); and a nested shell invoked with a value-taking option but
-WITHOUT `-c` (`bash -o errexit script.sh`) analyses the option value instead of the script. Both
-fail toward analysis of the wrong token; neither has been observed to fail open on a real commit
-form, unlike the six classes fixed above.
+per call, with the latency that implies); a nested shell invoked with a value-taking option but
+WITHOUT `-c` (`bash -o errexit script.sh`) analyses the option value instead of the script (which
+is a file this gate could not read anyway); and COMMAND SUBSTITUTION in command position —
+`$(echo git commit -m x)` — is opaque to any static tokeniser: the gate catches only LITERAL
+`git`/`gh` tokens, and tokens *generated* at runtime are unknowable without evaluating the shell.
+Stated here so nobody assumes it is covered.
 """
 
 from __future__ import annotations
@@ -69,7 +71,10 @@ _OPERATORS = frozenset({"&&", "||", ";", "|", "&", "(", ")", "{", "}"})
 # `sudo git commit`, `nohup git commit` and `time git commit` all walked straight through the gate.
 _WRAPPERS = frozenset(
     {"env", "sudo", "nohup", "time", "command", "exec", "nice", "stdbuf", "doas", "xargs",
-     "caffeinate", "watch", "timeout", "flock", "setsid", "ionice"},
+     "caffeinate", "watch", "timeout", "flock", "setsid", "ionice",
+     # siblings of entries above, found by fresh adversarial probes in review:
+     # `builtin` pairs with command/exec, `runuser` with sudo/doas
+     "builtin", "runuser"},
 )
 # Shell KEYWORDS: the next word after these is still a command. Without them,
 # `do` and `then` CLEARED the command position, so `for r in a b; do git commit

@@ -34,9 +34,10 @@ NOT substitute these — edit them by hand when your repo layout differs.
 
 **Residual known gaps** (also in the module docstring): repo attribution picks the outermost
 path component named in `KNOWN_REPOS`, not the git toplevel — an ancestor directory named e.g.
-`meta` mis-attributes commits under it; and a nested shell invoked with a value-taking option but
-without `-c` (`bash -o errexit script.sh`) analyses the wrong token. Neither fails open on a real
-commit form that review could construct; both are documented rather than hidden.
+`meta` mis-attributes commits under it; a nested shell invoked with a value-taking option but
+without `-c` (`bash -o errexit script.sh`) analyses the wrong token; and command substitution in
+command position (`$(echo git commit -m x)`) is opaque to any static tokeniser — only LITERAL
+`git`/`gh` tokens are caught. All three are documented rather than hidden.
 
 ## Enabling (ships disabled)
 
