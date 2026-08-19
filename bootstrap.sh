@@ -140,7 +140,8 @@ echo "  3. Name your repos in scripts/build_index.py (SIBLING_REPOS + VALID_REPO
 echo "  4. Symlink the session prompt at the project root: ln -s meta/new_session.md ../new_session"
 echo "  5. (Optional) install pre-commit hooks: pre-commit install"
 echo "  6. (Optional) copy claude-config/ into the project root's .claude/ if you use Claude Code,"
-echo "     and see claude-config/hooks/README.md to enable the review-gate hooks."
+echo "     and see claude-config/hooks/README.md to enable the review-gate hooks"
+echo "     (tune KNOWN_REPOS/UNGATED_REPOS in review_gate.py — bootstrap does not substitute them)."
 echo
 read -r -p "Delete bootstrap.sh now? [Y/n] " ans
 if [[ ! "${ans:-Y}" =~ ^[Nn]$ ]]; then

@@ -110,10 +110,10 @@ FLIPS = (
         "CommitGate.test_inline_override_in_the_command_works",
     ),
     Flip(
-        "the transcript byte budget is removed",
-        "            budget -= len(line)\n            if budget <= 0:\n                break",
-        "            budget -= len(line)",
-        "StopGate.test_the_byte_budget_stops_an_endless_file",
+        "the transcript is read from the HEAD again (tail delivery invisible)",
+        "            if size > budget:\n                handle.seek(size - budget)",
+        "            if False:\n                handle.seek(size - budget)",
+        "StopGate.test_the_budget_reads_the_tail_not_the_head",
     ),
     Flip(
         "a pathspec in another repo stops widening the gated set",
@@ -253,6 +253,66 @@ FLIPS = (
         'if agent == "team-lead" or \'"type":"NEVER_MATCHES"\' in body.replace(" ", ""):',
         "StopGate.test_ignores_an_idle_notification",
     ),
+    Flip(
+        "shell keywords clear the command position again (for/if bypass)",
+        "if at_command_position and token in _KEYWORDS:",
+        "if False:",
+        "CommitDetection.test_reproduced_bypasses_are_now_caught",
+    ),
+    Flip(
+        "shlex comments swallow the joined command again (sed s#a#b# bypass)",
+        'lexer.commenters = ""',
+        'lexer.commenters = "#"',
+        "CommitDetection.test_reproduced_bypasses_are_now_caught",
+    ),
+    Flip(
+        "eval analyses only its first word again",
+        'return [" ".join(words)]',
+        "return [words[0]]",
+        "CommitDetection.test_reproduced_bypasses_are_now_caught",
+    ),
+    Flip(
+        "-c stops selecting the command AFTER it (option-value bypass)",
+        'if word == "-c" and position + 1 < len(words):',
+        "if False:",
+        "CommitDetection.test_reproduced_bypasses_are_now_caught",
+    ),
+    Flip(
+        "the wrapper scan stops resuming at git (sudo -u / timeout bypass)",
+        "while index < len(tokens) and tokens[index] not in _OPERATORS:",
+        "while False:",
+        "CommitDetection.test_reproduced_bypasses_are_now_caught",
+    ),
+    Flip(
+        "the docs carve-out reads cwd again instead of the -C target",
+        'if op_token == "-C" and position + 1 < len(op_tokens):',
+        "if False:",
+        "CommitGateTargetRepo.test_dash_c_carveout_reads_the_target_repo",
+    ),
+    Flip(
+        "an unreadable team config reads as no-team again (teammate fail-open)",
+        "            unreadable += 1",
+        "            unreadable += 0",
+        "UnreadableTeamConfig.test_corrupt_config_is_undeterminable_for_a_teammate_too",
+    ),
+    Flip(
+        "settings/hooks paths ride the docs carve-out again",
+        'or "/.claude/" in f"/{line}" or "/hooks/" in f"/{line}"',
+        'or "/NEVER/" in f"/{line}"',
+        "StagedCodeDirect.test_settings_and_hooks_paths_are_code_whatever_the_extension",
+    ),
+    Flip(
+        "a failing git diff reads as docs-only again (inverted returncode)",
+        "    if result.returncode != 0:\n        return None\n    return [",
+        "    if result.returncode == 0:\n        return None\n    return [",
+        "StagedCodeDirect.test_lists_code_and_skips_docs",
+    ),
+    Flip(
+        "stop_hook_active stops passing (wedged turn)",
+        'if payload.get("stop_hook_active"):',
+        "if False:",
+        "StopHookActive.test_stop_hook_active_passes_instead_of_wedging",
+    ),
 )
 
 
@@ -337,7 +397,11 @@ _OPERATOR_SWAPS = {
 
 
 def _mutants(source: str) -> list[tuple[int, str, str, str]]:
-    """(lineno, before, after, mutated_source) for every mechanical mutation, strings/comments excluded."""
+    """(lineno, before, after, mutated_source) for every mechanical mutation
+    that COMPILES. Strings/comments excluded via tokenize; non-compiling
+    mutants (e.g. `in` -> `not in` inside a `for` header) excluded via
+    compile() — counting them as "killed" inflated the kill tally with mutants
+    that never ran (measured in review)."""
     import io
     import tokenize
 
@@ -357,7 +421,12 @@ def _mutants(source: str) -> list[tuple[int, str, str, str]]:
         mutated = list(lines)
         line = mutated[row - 1]
         mutated[row - 1] = line[:start] + replacement + line[end:]
-        out.append((row, tok.string, replacement, "".join(mutated)))
+        mutated_source = "".join(mutated)
+        try:
+            compile(mutated_source, "<mutant>", "exec")
+        except SyntaxError:
+            continue
+        out.append((row, tok.string, replacement, mutated_source))
     return out
 
 
@@ -367,7 +436,7 @@ def sweep() -> int:
     shutil.copytree(TARGET.parent, sandbox / "hooks")
     target, suite = sandbox / "hooks" / TARGET.name, sandbox / "hooks" / SUITE.name
     mutants = _mutants(original)
-    print(f"generic sweep: {len(mutants)} mechanical mutants over {TARGET.name}\n")
+    print(f"generic sweep: {len(mutants)} compiling mechanical mutants over {TARGET.name}\n")
     survivors: list[tuple[int, str, str]] = []
     try:
         for lineno, before, after, mutated in mutants:
@@ -405,7 +474,7 @@ def build(mod, inbox, command, cwd, session="abcdef1234567890", agent=""):
         "members": [{"agentId": "team-lead@session-abcdef12", "name": "team-lead",
                      "agentType": "team-lead"},
                     {"agentId": "rev-code@session-abcdef12", "name": "rev-code",
-                     "agentType": "pr-review-toolkit:code-reviewer"}]}))
+                     "agentType": "code-reviewer"}]}))
     (tdir / "inboxes" / "team-lead.json").write_text(inbox)
     return mod.decide_commit(command=command, cwd=cwd, session_id=session,
                              agent_id=agent, teams_root=teams)[0]
@@ -431,6 +500,14 @@ def results(mod):
     out["pending+nested->BLOCK"] = build(mod, PENDING, 'bash -c "git commit -m x"', "/repo/backend")
     out["pending+ghmerge->BLOCK"] = build(mod, PENDING, "gh pr merge 1 --merge", "/repo/backend")
     out["pending+wrapper->BLOCK"] = build(mod, PENDING, "sudo git commit -m x", "/repo/backend")
+    out["pending+forloop->BLOCK"] = build(mod, PENDING, "for r in a b; do git commit -m x; done", "/repo/backend")
+    out["pending+ifthen->BLOCK"] = build(mod, PENDING, 'if [ -n "x" ]; then git commit -m x; fi', "/repo/backend")
+    out["pending+evalbare->BLOCK"] = build(mod, PENDING, "eval git commit -m x", "/repo/backend")
+    out["pending+sudou->BLOCK"] = build(mod, PENDING, "sudo -u me git commit -m x", "/repo/backend")
+    out["pending+timeout->BLOCK"] = build(mod, PENDING, "timeout 120 git commit -m x", "/repo/backend")
+    out["pending+optc->BLOCK"] = build(mod, PENDING, 'bash -o errexit -c "git commit -m x"', "/repo/backend")
+    out["pending+hash->BLOCK"] = build(mod, PENDING, "sed -i s#a#b# f && git commit -am x", "/repo/backend")
+    out["pending+hashprose->allow"] = build(mod, PENDING, 'echo "a#b" && git status', "/repo/backend")
     out["pending+contin->BLOCK"] = build(mod, PENDING, "git add x && \\\n git commit -m y", "/repo/backend")
     out["pending+noncommit->allow"] = build(mod, PENDING, "git status", "/repo/backend")
     out["pending+prose->allow"] = build(mod, PENDING, 'echo "the reorder commit?"', "/repo/backend")

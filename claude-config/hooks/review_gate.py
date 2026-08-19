@@ -26,6 +26,14 @@ KNOWN LIMITATION (upstream, unfixed at port time): the stop gate keeps no record
 acknowledged report, so in a long autonomous stretch every later close must re-name a reporting
 agent or be re-blocked; and cross-session peer messages are invisible to it. Fix upstream first
 or accept occasional false blocks. The deliver-mode gate and dismissal branch are sound.
+
+RESIDUAL KNOWN GAPS (documented, not hidden): `_repo_of` picks the OUTERMOST path component named
+in KNOWN_REPOS, not the actual git toplevel — an ancestor directory that happens to carry one of
+those names mis-attributes every commit under it (a real fix needs `git rev-parse --show-toplevel`
+per call, with the latency that implies); and a nested shell invoked with a value-taking option but
+WITHOUT `-c` (`bash -o errexit script.sh`) analyses the option value instead of the script. Both
+fail toward analysis of the wrong token; neither has been observed to fail open on a real commit
+form, unlike the six classes fixed above.
 """
 
 from __future__ import annotations
@@ -61,7 +69,15 @@ _OPERATORS = frozenset({"&&", "||", ";", "|", "&", "(", ")", "{", "}"})
 # `sudo git commit`, `nohup git commit` and `time git commit` all walked straight through the gate.
 _WRAPPERS = frozenset(
     {"env", "sudo", "nohup", "time", "command", "exec", "nice", "stdbuf", "doas", "xargs",
-     "caffeinate", "watch"},
+     "caffeinate", "watch", "timeout", "flock", "setsid", "ionice"},
+)
+# Shell KEYWORDS: the next word after these is still a command. Without them,
+# `do` and `then` CLEARED the command position, so `for r in a b; do git commit
+# -m x; done` and `if [ -n x ]; then git commit -m x; fi` both walked through
+# the gate (reproduced in review, with controls).
+_KEYWORDS = frozenset(
+    {"if", "then", "elif", "else", "fi", "for", "while", "until", "do", "done",
+     "in", "case", "esac", "!"},
 )
 # `bash -c "git commit …"` hid the commit inside a quoted string, which the tokeniser cannot see. The
 # string is analysed RECURSIVELY rather than blanket-blocked, because `bash -lc` is used constantly for
@@ -154,6 +170,11 @@ def mark_line_breaks(command: str) -> str:
 def _tokenise(command: str) -> list[str]:
     lexer = shlex.shlex(mark_line_breaks(strip_heredocs(command)), posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
+    # No comment handling: shlex's default `#` swallows to end-of-logical-line
+    # AFTER backslash-joining, so `sed -i s#a#b# f && git commit -am x` lost the
+    # commit entirely (reproduced in review). A stray `#` token can only
+    # over-block, which this module's own header calls the cheap direction.
+    lexer.commenters = ""
     return list(lexer)
 
 
@@ -169,12 +190,28 @@ def commit_ops(command: str) -> list[tuple[str, tuple[str, ...]]]:
             at_command_position = True
             index += 1
             continue
-        if _ENV_ASSIGNMENT.match(token) or token.rsplit("/", 1)[-1] in _WRAPPERS:
+        if at_command_position and token in _KEYWORDS:
             index += 1
-            continue  # still at a command position
+            continue  # shell keyword — the next word is still a command
+        if _ENV_ASSIGNMENT.match(token) or token.rsplit("/", 1)[-1] in _WRAPPERS:
+            # A wrapper's arguments can include options WITH VALUES (`sudo -u
+            # me git …`, `timeout 120 git …`). Rather than model every
+            # wrapper's option table, scan this simple command for the first
+            # token naming a shell/git/gh and resume there. Over-inclusive by
+            # design: a bare `git` inside a wrapper's arguments re-enters
+            # analysis, which can only over-block (the cheap direction).
+            index += 1
+            while index < len(tokens) and tokens[index] not in _OPERATORS:
+                ahead = tokens[index].rsplit("/", 1)[-1]
+                if (ahead in _NESTED_SHELLS or ahead in ("git", "gh")
+                        or ahead in _WRAPPERS or _ENV_ASSIGNMENT.match(tokens[index])):
+                    break
+                index += 1
+            at_command_position = True
+            continue
         name = token.rsplit("/", 1)[-1]
         if at_command_position and name in _NESTED_SHELLS:
-            for nested in _nested_commands(tokens, index + 1):
+            for nested in _nested_commands(tokens, index + 1, shell=name):
                 try:
                     found.extend(commit_ops(nested))
                 except ValueError:
@@ -200,18 +237,30 @@ def commit_ops(command: str) -> list[tuple[str, tuple[str, ...]]]:
     return found
 
 
-def _nested_commands(tokens: list[str], start: int) -> list[str]:
-    """The command strings a nested shell would execute."""
-    out: list[str] = []
+def _nested_commands(tokens: list[str], start: int, shell: str = "") -> list[str]:
+    """The command strings a nested shell would execute.
+
+    `eval` concatenates ALL its arguments into one command, and the `-c` family
+    takes the argument AFTER `-c` — `bash -o errexit -c "git commit"` puts an
+    option VALUE (`errexit`) before the command string. The first version took
+    the first non-option token and missed both (reproduced in review)."""
+    words: list[str] = []
     for index in range(start, len(tokens)):
         token = tokens[index]
         if token in _OPERATORS:
             break
-        if token.startswith("-"):
-            continue
-        out.append(token)
-        break
-    return out
+        words.append(token)
+    if not words:
+        return []
+    if shell == "eval":
+        return [" ".join(words)]
+    for position, word in enumerate(words):
+        if word == "-c" and position + 1 < len(words):
+            return [words[position + 1]]
+    for word in words:
+        if not word.startswith("-"):
+            return [word]
+    return []
 
 
 def _gh_is_commit_producing(tokens: list[str], start: int) -> bool:
@@ -314,23 +363,31 @@ def resolve_team(teams_root: Path, session_id: str, agent_id: str = "") -> tuple
     """Which team's lead inbox governs this process? (dir, why).
 
     A TEAMMATE has its own session id and no team dir of its own, so keying the path on `session_id`
-    alone made every teammate invisible to the gate — and this project's documented commit path is a
-    `committer` teammate. `agent_id` is `<name>@session-<lead8>`, so it names the team directly; we
+    alone made every teammate invisible to the gate — and a common commit path IS a `committer`
+    teammate. `agent_id` is `<name>@session-<lead8>`, so it names the team directly; we
     also match `config.json.leadSessionId` so the lead resolves without it.
     """
     if _SESSION_ID.match(session_id):
         candidate = teams_root / f"session-{session_id[:8]}"
         if candidate.is_dir():
             return candidate, f"team {candidate.name} resolved from session_id"
+    unreadable = 0
     for config in sorted(teams_root.glob("session-*/config.json")):
         try:
             data = json.loads(config.read_text())
         except (OSError, ValueError):
+            unreadable += 1
             continue
         if data.get("leadSessionId") == session_id or any(
             member.get("agentId") == agent_id for member in data.get("members") or []
         ):
             return config.parent, f"team {config.parent.name} resolved from its config.json"
+    if unreadable:
+        # A corrupt config.json blocked the LEAD but silently ALLOWED a
+        # teammate (the documented commit path): membership was unknowable,
+        # yet the fall-through read as "no teammates were spawned" — a clear
+        # verdict from unreadable evidence (reproduced in review).
+        return None, f"{unreadable} team config.json file(s) unreadable — cannot determine membership"
     return None, "no team directory matches this session — no teammates were spawned"
 
 
@@ -361,6 +418,8 @@ def pending_reports(
             # A `session_id` of "../.." used to build a path that did not exist, and "no inbox there"
             # read as "nothing pending". Fail-open, found in the manual security pass on this diff.
             return [], f"session id {session_id!r} is not a recognised id — cannot determine", True
+        if "cannot determine" in why:
+            return [], why, True
         return [], why, False
 
     inbox, problem = _lead_inbox(team_dir)
@@ -429,16 +488,25 @@ def _is_owner_prompt(entry: dict) -> bool:
 def delivered_this_turn(path: Path, byte_budget: int | None = None) -> list[tuple[str, str]]:
     if not path.is_file():
         return []
-    # Streamed, and only the CURRENT turn is retained. Materialising the whole transcript grew with
-    # the session (27 MB seen) and a file without newlines — /dev/zero — read forever. Both bounded
-    # here: entries reset at each owner prompt, and the byte budget stops a pathological file.
-    entries: list[dict] = []
+    # Only the LAST `budget` BYTES are read: the current turn sits at the END
+    # of a transcript that only grows. The first version consumed the budget
+    # from the HEAD and stopped — so the moment a long-lived transcript
+    # outgrew the budget, the stop gate silently and PERMANENTLY disabled
+    # itself (reproduced in review). The bounded read() also keeps a
+    # pathological file without newlines — /dev/zero — from being read forever.
     budget = _TRANSCRIPT_BYTE_BUDGET if byte_budget is None else byte_budget
-    with path.open(errors="replace") as handle:
-        for line in handle:
-            budget -= len(line)
-            if budget <= 0:
-                break
+    try:
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            if size > budget:
+                handle.seek(size - budget)
+                handle.readline()  # drop the first, likely partial, line
+            raw = handle.read(budget)
+    except OSError:
+        return []
+    entries: list[dict] = []
+    if raw:
+        for line in raw.decode("utf-8", errors="replace").splitlines():
             line = line.strip()
             if not line or len(line) > _MAX_LINE_BYTES:
                 continue
@@ -473,9 +541,9 @@ _INLINE_OVERRIDE = re.compile(rf"{OVERRIDE_ENV}=(?:'([^']*)'|\"([^\"]*)\"|(\S+))
 def _staged_code(cwd: str) -> list[str] | None:
     """Staged paths that are code, or None when the staged set cannot be read (→ block).
 
-    `UNGATED_REPOS = {"meta"}` was justified as "tickets and docs", but `git ls-files '*.py'` in meta
-    returns 9 — including this file and `scripts/build_index.py`, the validator that gates every commit.
-    The carve-out has to be decided per PATH, not per repo name.
+    `UNGATED_REPOS = {"meta"}` was justified as "tickets and docs", but the meta repo's own tooling —
+    this gate and `scripts/build_index.py`, the validator that gates every commit — is Python living in
+    that repo. The carve-out has to be decided per PATH, not per repo name.
     """
     try:
         result = subprocess.run(  # noqa: S603
@@ -488,7 +556,13 @@ def _staged_code(cwd: str) -> list[str] | None:
         return None
     return [
         line for line in result.stdout.splitlines()
-        if line.strip() and not line.endswith((".md", ".json", ".txt", ".lock"))
+        if line.strip() and (
+            not line.endswith((".md", ".json", ".txt", ".lock"))
+            # Settings and hooks are CODE whatever their extension — a commit
+            # staging only `.claude/settings.json`, the file that WIRES this
+            # gate, rode the docs carve-out (reproduced in review).
+            or "/.claude/" in f"/{line}" or "/hooks/" in f"/{line}"
+        )
     ]
 
 
@@ -544,8 +618,17 @@ def decide_commit(
         return False, why
 
     repos = resolve_repos(command, cwd)
+    # The staged set must come from the repo the commit TARGETS: `git -C
+    # <elsewhere> commit` resolved its repo from `-C` but read the staged set
+    # from `cwd`, so a code commit into the ungated repo rode the docs
+    # carve-out whenever cwd had nothing staged (reproduced in review).
+    target_dir = cwd
+    for _subcommand, op_tokens in ops:
+        for position, op_token in enumerate(op_tokens):
+            if op_token == "-C" and position + 1 < len(op_tokens):
+                target_dir = op_tokens[position + 1]
     if repos and repos <= UNGATED_REPOS:
-        code = _staged_code(cwd)
+        code = _staged_code(target_dir)
         if code is None:
             return True, (
                 "review-gate: BLOCKED — a report is pending and the staged set of this `meta` commit "
@@ -691,6 +774,12 @@ def main(argv: list[str] | None = None) -> int:
                 teams_root=teams_root,
             )
         else:
+            if payload.get("stop_hook_active"):
+                # We are re-invoked on our own block. Blocking again wedges the
+                # turn permanently: the block message deliberately names no
+                # agent, and a stop-mode override cannot be set from inside the
+                # session. One block is the signal; the retry passes.
+                return 0
             team_dir, _why = resolve_team(
                 teams_root, str(payload.get("session_id") or ""), str(payload.get("agent_id") or ""),
             )
@@ -714,7 +803,8 @@ def main(argv: list[str] | None = None) -> int:
     if block:
         print(reason, file=sys.stderr)
         return 2
-    if "pending report" in reason or "cannot determine" in reason:
+    if ("pending report" in reason or "cannot determine" in reason
+            or "no teammates were spawned" in reason):
         # Not a block, but the operator must be able to learn the gate stood down and why. Every "why"
         # on the allow path used to be computed and discarded, so an inert gate looked like a clear one.
         print(f"review-gate: allowed — {reason}", file=sys.stderr)

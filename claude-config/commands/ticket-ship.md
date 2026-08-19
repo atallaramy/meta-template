@@ -45,14 +45,9 @@ Finalize ticket `$ARGUMENTS` as shipped — **at the merge, in the same session*
 10. **Commit automatically.** Shipping IS the commit — no second roundtrip. Run as one shell sequence:
    ```bash
    cd meta && \
-     git add tickets/ INDEX.md INDEX.json FEATURES.md && \
+     git add tickets/done/$ARGUMENTS-*.md tickets/backlog/ INDEX.md INDEX.json FEATURES.md && \
      { [ -f PROD-READINESS.md ] && git add PROD-READINESS.md; true; } && \
-     { [ -d compliance ] && git add compliance/; true; }
-     # `git add` is ATOMIC: one non-matching pathspec (e.g. an absent
-     # PROD-READINESS.md) aborts the whole call with ZERO files staged, and a
-     # `2>/dev/null` hides it — the ship commit then lands half-empty and CI's
-     # --check goes red later. Optional files are guarded, never blind-listed.
-     # `tickets/` covers the moved file AND any spawned follow-ups.
+     { [ -d compliance ] && git add compliance/; true; } && \
      git commit -m "$(cat <<'EOF'
    chore(meta): ship $ARGUMENTS — <one-line capability or "control hardening" summary>
 
@@ -65,6 +60,12 @@ Finalize ticket `$ARGUMENTS` as shipped — **at the merge, in the same session*
    )"
    ```
    If the pre-commit hooks fail, fix the surfaced issue, re-stage, create a NEW commit (never `--amend`).
+   Notes on the shape of that chain, each one earned: `git add` is ATOMIC — one non-matching
+   pathspec (e.g. an absent PROD-READINESS.md) aborts the call with ZERO files staged, so optional
+   files are guarded, never blind-listed, and nothing is silenced with `2>/dev/null`. The commit is
+   `&&`-chained so a failed add can never produce a half-empty ship commit. And the adds are scoped
+   to THIS ticket's paths + `tickets/backlog/` (spawned follow-ups) — a bare `git add tickets/`
+   would sweep a parallel session's uncommitted ticket edits into the ship commit.
 
 11. **Publish per your meta-repo policy.** Push (or open a PR) according to your project's convention — direct push to the meta repo's main branch if allowed, otherwise open a PR. Document the chosen policy in your project's `CLAUDE.md` so this step is unambiguous. NEVER force-push.
 

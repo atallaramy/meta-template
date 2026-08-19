@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -94,8 +95,37 @@ class CommitDetection(unittest.TestCase):
                        'eval "git commit -m x"', "xargs git commit -m x",
                        "gh pr merge 117 --repo x --merge")
 
+    REPRODUCED_BYPASSES = (
+        # Every one of these walked through the gate as a real commit
+        # (reproduced in review, with controls). Each names its cause.
+        "for r in a b; do git -C $r commit -m x; done",          # keywords cleared position
+        'git add . && if [ -n "x" ]; then git commit -m x; fi',  # `then` cleared position
+        "eval git commit -m x",                                   # eval took only the first word
+        "sudo -u me git commit -m x",                             # wrapper option VALUE cleared position
+        "nice -n 10 git commit -m x",
+        "env -i git commit -m x",
+        'bash -o errexit -c "git commit -m x"',                   # first non-option was an option VALUE
+        "timeout 120 git commit -m x",                            # wrapper missing from the set
+        "sed -i s#a#b# f.txt && git commit -am x",                # shlex comment ate the joined line
+        'echo a#b && git commit -m x',
+    )
+
+    def test_reproduced_bypasses_are_now_caught(self) -> None:
+        for command in self.REPRODUCED_BYPASSES:
+            with self.subTest(command=command):
+                self.assertTrue(rg.commit_ops(command), command)
+
+    def test_keywords_and_comment_handling_do_not_over_block(self) -> None:
+        # The anti-over-block half: prose `git`, a `#` in arguments, and loops
+        # without commits stay clear.
+        for command in ("for f in a b; do echo $f; done",
+                        'echo "git: the reorder commit?" # commit later',
+                        "sed -i s#a#b# f.txt && git status"):
+            with self.subTest(command=command):
+                self.assertEqual(rg.commit_ops(command), [], command)
+
     def test_nested_shells_and_gh_merge_are_detected(self) -> None:
-        """All five walked straight through the tokeniser; `gh pr merge` is CLAUDE.md's merge path."""
+        """All five walked straight through the tokeniser; `gh pr merge` is a documented merge path."""
         for command in self.NESTED_BYPASSES:
             with self.subTest(command=command):
                 self.assertTrue(rg.commit_ops(command), command)
@@ -114,7 +144,7 @@ class CommitDetection(unittest.TestCase):
 
     def test_a_nested_shell_without_a_commit_is_not_blocked(self) -> None:
         """The anti-over-block guard: `bash -lc` is used constantly for things that are not commits."""
-        for command in ('bash -lc "pytest -q"', 'docker compose run django bash -lc "ruff check ."'):
+        for command in ('bash -lc "pytest -q"', 'docker compose run app bash -lc "lint-check ."'):
             with self.subTest(command=command):
                 self.assertEqual(rg.commit_ops(command), [], command)
 
@@ -365,7 +395,11 @@ class Describe(unittest.TestCase):
 
 
 class Tokeniser(unittest.TestCase):
-    """`posix=True` and `whitespace_split=True` both survived every mutation."""
+    """Pins tokeniser OUTPUT shapes. Honesty note (measured in review): with
+    `punctuation_chars=True`, flipping `whitespace_split` to False leaves this
+    whole suite green — the settings overlap, so `whitespace_split` is
+    belt-and-braces, not independently observable. These tests pin the shapes
+    the gate depends on, not each flag."""
 
     def test_quoting_is_honoured(self) -> None:
         """Without posix quote handling, a quoted string stops being one token and prose matches."""
@@ -373,7 +407,7 @@ class Tokeniser(unittest.TestCase):
                          ["echo", "git: the reorder commit?"])
 
     def test_paths_stay_whole(self) -> None:
-        """Without whitespace_split, shlex splits on its punctuation set and paths shatter."""
+        """Paths must stay single tokens, whichever flag provides it."""
         self.assertIn("/repo/backend/file.py", rg._tokenise("git add /repo/backend/file.py"))
 
 
@@ -408,9 +442,9 @@ class CommitGate(_Mailbox):
             self.assertFalse(self.decide("git commit -m docs", "/repo/meta")[0])
 
     def test_meta_commit_staging_code_is_gated(self) -> None:
-        """`git ls-files '*.py'` in meta returns 9 — including this gate and build_index.py, the
-        validator gating every commit. The carve-out is for tickets and docs, and it was ungating
-        meta's own tooling, so this 379-line change could not have been blocked by its own rule."""
+        """The meta repo's own tooling — this gate and the validator gating every commit — is code
+        living in the "docs" repo. The carve-out is for tickets and docs, and it was ungating
+        meta's own tooling, so a change to this gate could not have been blocked by its own rule."""
         self.pending()
         with unittest.mock.patch.object(rg, "_staged_code", return_value=["claude-config/hooks/x.py"]):
             block, reason = self.decide("git commit -m code", "/repo/meta")
@@ -556,6 +590,119 @@ class Cli(_Mailbox):
         self.assertIn("teams-root redirected", self.log.read_text())
 
 
+class StagedCodeDirect(unittest.TestCase):
+    """_staged_code had ZERO direct tests — every call site mocked it, and an
+    inverted returncode check (`!=` → `==`) survived the whole suite (measured
+    in review). It inverts to: a FAILING `git diff` reads as "docs only"."""
+
+    @staticmethod
+    def _repo(d: Path) -> None:
+        git = ["git", "-c", "user.email=t@t.t", "-c", "user.name=t", "-C", str(d)]
+        subprocess.run(["git", "init", "-q", str(d)], check=True)
+        (d / "a.py").write_text("x = 1\n")
+        (d / "b.md").write_text("# doc\n")
+        subprocess.run([*git, "add", "a.py", "b.md"], check=True)
+
+    def test_lists_code_and_skips_docs(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            self._repo(Path(d))
+            self.assertEqual(rg._staged_code(d), ["a.py"])
+
+    def test_settings_and_hooks_paths_are_code_whatever_the_extension(self) -> None:
+        # A commit staging only `.claude/settings.json` — the file that WIRES
+        # this gate — rode the docs carve-out (reproduced in review).
+        with tempfile.TemporaryDirectory() as d:
+            git = ["git", "-c", "user.email=t@t.t", "-c", "user.name=t", "-C", d]
+            subprocess.run(["git", "init", "-q", d], check=True)
+            claude_dir = Path(d) / ".claude"
+            claude_dir.mkdir()
+            (claude_dir / "settings.json").write_text("{}")
+            subprocess.run([*git, "add", ".claude/settings.json"], check=True)
+            self.assertEqual(rg._staged_code(d), [".claude/settings.json"])
+
+    def test_outside_a_repo_returns_none_not_docs_only(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(rg._staged_code(d))
+
+
+class CommitGateTargetRepo(_Mailbox):
+    """H2 — the docs carve-out must read the staged set of the repo the commit
+    TARGETS (`-C`), not the cwd (reproduced in review: code staged in the -C
+    target, nothing staged in cwd → 'docs only' → allowed)."""
+
+    def test_dash_c_carveout_reads_the_target_repo(self) -> None:
+        self.write(json.dumps([{"from": "rev-code", "summary": "3 critical"}]))
+        with tempfile.TemporaryDirectory() as d:
+            meta_repo = Path(d) / "meta"
+            meta_repo.mkdir()
+            git = ["git", "-c", "user.email=t@t.t", "-c", "user.name=t", "-C", str(meta_repo)]
+            subprocess.run(["git", "init", "-q", str(meta_repo)], check=True)
+            (meta_repo / "tool.py").write_text("x = 1\n")
+            subprocess.run([*git, "add", "tool.py"], check=True)
+            block, reason = rg.decide_commit(
+                command=f"git -C {meta_repo} commit -m x",
+                cwd=d,  # cwd is NOT a repo and has nothing staged
+                session_id=SESSION, teams_root=self.teams,
+            )
+            self.assertTrue(block, reason)
+            self.assertIn("stages CODE", reason)
+
+
+class UnreadableTeamConfig(_Mailbox):
+    """H3 — a corrupt team config.json blocked the lead but silently ALLOWED a
+    teammate: membership was unknowable, and the fall-through read as 'no
+    teammates were spawned' (reproduced in review)."""
+
+    def test_corrupt_config_is_undeterminable_for_a_teammate_too(self) -> None:
+        (self.team_dir / "config.json").write_text("{corrupt")
+        pending, why, undetermined = rg.pending_reports(
+            self.teams, "aaaabbbbccccdddd", f"rev-code@session-{SESSION[:8]}",
+        )
+        self.assertEqual(pending, [])
+        self.assertTrue(undetermined, why)
+
+
+class StopHookActive(unittest.TestCase):
+    """H5 — without this guard, our own block re-invokes us, the block message
+    deliberately names no agent, stop-mode overrides cannot be set from inside
+    the session, and the turn wedges permanently."""
+
+    def _payload(self, tmp: Path, active: bool) -> dict:
+        # A REAL transcript with a delivered report + a dismissing close: the
+        # un-guarded gate must BLOCK this payload, so only the guard can make
+        # it pass. (A nonexistent transcript exits 0 either way and cannot
+        # distinguish the guard from its absence.)
+        transcript = tmp / "t.jsonl"
+        transcript.write_text(
+            json.dumps({"type": "user", "userType": "external",
+                        "message": {"content": "go"}}) + "\n"
+            + json.dumps({"type": "user", "message": {"content": (
+                'Another Claude session sent a message:\n<teammate-message '
+                'teammate_id="rev-code" summary="3 critical">b</teammate-message>\n'
+            )}}) + "\n"
+        )
+        return {
+            "stop_hook_active": active,
+            "transcript_path": str(transcript),
+            "last_assistant_message": "0 reported, round clean.",
+            "session_id": SESSION,
+        }
+
+    def _invoke(self, payload: dict) -> int:
+        with unittest.mock.patch.object(sys, "stdin") as stdin:
+            stdin.buffer.read.return_value = json.dumps(payload).encode()
+            return rg.main(["--mode", "stop"])
+
+    def test_stop_hook_active_passes_instead_of_wedging(self) -> None:
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self._invoke(self._payload(Path(d), active=True)), 0)
+
+    def test_without_the_flag_the_same_payload_still_blocks(self) -> None:
+        # The control: the guard must not weaken the gate for a normal close.
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(self._invoke(self._payload(Path(d), active=False)), 2)
+
+
 class StopGate(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
@@ -625,9 +772,26 @@ class StopGate(unittest.TestCase):
         self.assertFalse(block)
 
     def test_a_single_enormous_line_is_skipped(self) -> None:
+        # The oversized line must be VALID JSON carrying a real delivery: the
+        # first fixture was raw "xxx…", which json.loads drops regardless, so
+        # deleting the length clause left the whole suite green (measured in
+        # review) — a guard that could not fail.
         path = self.dir / "huge.jsonl"
-        path.write_text("x" * (rg._MAX_LINE_BYTES + 10))
+        entry = self.delivery(body="x" * (rg._MAX_LINE_BYTES + 10))
+        path.write_text(json.dumps(self.owner()) + "\n" + json.dumps(entry) + "\n")
         self.assertEqual(rg.delivered_this_turn(path), [])
+
+    def test_the_budget_reads_the_tail_not_the_head(self) -> None:
+        # The current turn is at the END of a transcript that only grows. A
+        # head-consumed budget silently and permanently disabled the gate the
+        # moment the file outgrew it (reproduced in review).
+        pad = [self.owner(f"noise {i} " + "z" * 200) for i in range(50)]
+        path = self.transcript(*pad, self.owner(), self.delivery())
+        small_budget = os.path.getsize(path) // 2
+        self.assertTrue(
+            rg.delivered_this_turn(path, byte_budget=small_budget),
+            "a delivery at the END must be seen when the budget covers the tail",
+        )
 
     def test_the_byte_budget_stops_an_endless_file(self) -> None:
         """/dev/zero read forever before the budget existed. Budget is injectable so the test does
